@@ -2,45 +2,132 @@ import codecs
 from alphabet import Alphabet
 import numpy as np
 import cPickle as pickle
+from os import listdir
+from os.path import isfile, join
+from my_utils import get_bioc_file, get_text_file
+import spacy
+from data_structure import Entity, Document
+from options import opt
 
-def loadData(file_path):
-    file = codecs.open(file_path, 'r', 'UTF-8')
-    data = []
-    sentence = []
-    for line in file:
-        columns = line.strip().split()
-        if len(columns) == 0:
-            data.append(sentence)
-            sentence = []
-            continue
 
-        token = {}
-        token['text'] = columns[0]
-        token['doc'] = columns[1]
-        token['start'] = int(columns[2])
-        token['end'] = int(columns[3])
-        token['label'] = columns[5]
-        sentence.append(token)
+def getLabel(start, end, entities):
+    match = ""
+    for entity in entities:
+        if start == entity.start and end == entity.end : # S
+            match = "S"
+            break
+        elif start == entity.start and end != entity.end : # B
+            match = "B"
+            break
+        elif start != entity.start and end == entity.end : # E
+            match = "E"
+            break
+        elif start > entity.start and end < entity.end:  # M
+            match = "M"
+            break
 
-    file.close()
-    return data
+    if match != "":
+        return match+"-"+entity.type
+    else:
+        return "O"
 
-def read_instance(data, word_alphabet, char_alphabet, label_alphabet):
+def get_start_and_end_offset_of_token_from_spacy(token):
+    start = token.idx
+    end = start + len(token)
+    return start, end
 
-    instence_texts = []
-    instence_Ids = []
-    words = []
-    chars = []
-    labels = []
-    word_Ids = []
-    char_Ids = []
-    label_Ids = []
-    for sentence in data:
+def get_sentences_and_tokens_from_spacy(text, spacy_nlp, entities):
+    document = spacy_nlp(text)
+    # sentences
+    sentences = []
+    for span in document.sents:
+        sentence = [document[i] for i in range(span.start, span.end)]
+        sentence_tokens = []
+        for token in sentence:
+            token_dict = {}
+            token_dict['start'], token_dict['end'] = get_start_and_end_offset_of_token_from_spacy(token)
+            token_dict['text'] = text[token_dict['start']:token_dict['end']]
+            if token_dict['text'].strip() in ['\n', '\t', ' ', '']:
+                continue
+            # Make sure that the token text does not contain any space
+            if len(token_dict['text'].split(' ')) != 1:
+                print("WARNING: the text of the token contains space character, replaced with hyphen\n\t{0}\n\t{1}".format(token_dict['text'],
+                                                                                                                           token_dict['text'].replace(' ', '-')))
+                token_dict['text'] = token_dict['text'].replace(' ', '-')
+
+            # get label
+            if entities:
+                token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
+
+            sentence_tokens.append(token_dict)
+        sentences.append(sentence_tokens)
+    return sentences
+
+def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
+    document = Document()
+    document.name = fileName
+
+    if annotation_dir:
+        annotation_file = get_bioc_file(join(annotation_dir, fileName))
+        bioc_passage = annotation_file[0].passages[0]
+        entities = []
+
+        for entity in bioc_passage.annotations:
+            if opt.types and (entity.infons['type'] not in opt.type_filter):
+                continue
+            entity_ = Entity()
+            entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
+                           entity.text.decode('utf-8'), None, None, None)
+            entities.append(entity_)
+
+        document.entities = entities
+
+    corpus_file = get_text_file(join(corpus_dir, fileName.split('.bioc')[0]))
+
+    if annotation_dir:
+        sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, document.entities)
+    else:
+        sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, None)
+
+    document.sentences = sentences
+
+    return document
+
+
+
+def loadData(basedir):
+    annotation_dir = join(basedir, 'annotations')
+    corpus_dir = join(basedir, 'corpus')
+
+    spacy_nlp = spacy.load('en')
+
+    documents = []
+
+    annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
+    for fileName in annotation_files:
+        document = processOneFile(fileName, annotation_dir, corpus_dir, spacy_nlp)
+
+        documents.append(document)
+
+    return documents
+
+def read_instance_from_one_document(document, word_alphabet, char_alphabet, label_alphabet, instence_texts, instence_Ids):
+
+    for sentence in document.sentences:
+
+        words = []
+        chars = []
+        labels = []
+        word_Ids = []
+        char_Ids = []
+        label_Ids = []
+
         for token in sentence:
             words.append(token['text'])
             word_Ids.append(word_alphabet.get_index(token['text']))
-            labels.append(token['label'])
-            label_Ids.append(label_alphabet.get_index(token['label']))
+            if 'label' in token:
+                labels.append(token['label'])
+                label_Ids.append(label_alphabet.get_index(token['label']))
             char_list = []
             char_Id = []
             for char in token['text']:
@@ -49,14 +136,22 @@ def read_instance(data, word_alphabet, char_alphabet, label_alphabet):
             chars.append(char_list)
             char_Ids.append(char_Id)
 
-        instence_texts.append([words, chars, labels])
-        instence_Ids.append([word_Ids, char_Ids, label_Ids])
-        words = []
-        chars = []
-        labels = []
-        word_Ids = []
-        char_Ids = []
-        label_Ids = []
+        if len(labels) == 0:
+            instence_texts.append([words, chars])
+            instence_Ids.append([word_Ids, char_Ids])
+        else:
+            instence_texts.append([words, chars, labels])
+            instence_Ids.append([word_Ids, char_Ids, label_Ids])
+
+
+def read_instance(data, word_alphabet, char_alphabet, label_alphabet):
+
+    instence_texts = []
+    instence_Ids = []
+
+    for document in data:
+        read_instance_from_one_document(document, word_alphabet, char_alphabet, label_alphabet, instence_texts,
+                                        instence_Ids)
 
     return instence_texts, instence_Ids
 
@@ -208,13 +303,30 @@ class Data:
         self.pretrain_word_embedding = None
         self.word_emb_dim = opt.word_emb_dim
 
+    def clear(self):
+        self.train_data = None
+        self.dev_data = None
+        self.test_data = None
+
+        self.train_texts = None
+        self.train_Ids = None
+        self.dev_texts = None
+        self.dev_Ids = None
+        self.test_texts = None
+        self.test_Ids = None
+
+        self.pretrain_word_embedding = None
+
+
     def build_alphabet(self, data):
-        for sentence in data:
-            for token in sentence:
-                self.word_alphabet.add(token['text'])
-                self.label_alphabet.add(token['label'])
-                for char in token['text']:
-                    self.char_alphabet.add(char)
+        for document in data:
+            for sentence in document.sentences:
+                for token in sentence:
+                    self.word_alphabet.add(token['text'])
+                    self.label_alphabet.add(token['label'])
+                    for char in token['text']:
+                        self.char_alphabet.add(char)
+
 
     def fix_alphabet(self):
         self.word_alphabet.close()

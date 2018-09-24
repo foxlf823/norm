@@ -60,7 +60,7 @@ def train(data, opt):
         epoch_finish = time.time()
         print("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
 
-        _, _, p, r, f, _, _ = evaluate(data, opt, model, "dev")
+        _, _, p, r, f, _, _ = evaluate(data, opt, model, "dev", True)
         print("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
 
         if f > best_dev:
@@ -70,7 +70,7 @@ def train(data, opt):
             best_dev = f
 
             if opt.test_file:
-                _, _, p, r, f, _, _ = evaluate(data, opt, model, "test", opt.nbest)
+                _, _, p, r, f, _, _ = evaluate(data, opt, model, "test", True, opt.nbest)
                 print("Test: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
 
             bad_counter = 0

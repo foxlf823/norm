@@ -4,9 +4,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-whattodo', type=int, default=1, help='1-train, 2-test')
 parser.add_argument('-verbose', action='store_true', help='1-print debug logs')
 parser.add_argument('-random_seed', type=int, default=1)
-parser.add_argument('-train_file', default='./sample.txt')
-parser.add_argument('-dev_file', default='./sample.txt')
-parser.add_argument('-test_file', default=None)
+parser.add_argument('-train_file', default='./sample')
+parser.add_argument('-dev_file', default='./sample')
+parser.add_argument('-test_file', default='./sample')
 parser.add_argument('-output', default='./output')
 parser.add_argument('-iter', type=int, default=100)
 parser.add_argument('-gpu', type=int, default=0)
@@ -23,7 +23,15 @@ parser.add_argument('-l2', type=float, default=1e-8)
 parser.add_argument('-nbest', type=int, default=0)
 parser.add_argument('-patience', type=int, default=10)
 parser.add_argument('-gradient_clip', type=float, default=5.0)
+parser.add_argument('-types', default=None) # a,b,c
+parser.add_argument('-predict', default='./predict')
 
 
 opt = parser.parse_args()
+
+if opt.types:
+    types_ = opt.types.split(',')
+    opt.type_filter = set()
+    for t in types_:
+        opt.type_filter.add(t)
 

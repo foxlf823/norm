@@ -1,5 +1,7 @@
 from os import listdir
 from os.path import isfile, join
+import os
+import shutil
 import bioc
 from data_structure import Entity
 import time
@@ -7,6 +9,7 @@ from metric import get_ner_fmeasure
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
+import codecs
 
 def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     """
@@ -27,23 +30,31 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
         batch_size = len(input_batch_list)
         words = [sent[0] for sent in input_batch_list]
         chars = [sent[1] for sent in input_batch_list]
-        labels = [sent[2] for sent in input_batch_list]
+        if len(sent) > 2:
+            labels = [sent[2] for sent in input_batch_list]
+        else:
+            labels = None
         word_seq_lengths = torch.LongTensor(map(len, words))
         max_seq_len = word_seq_lengths.max()
         word_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len))).long()
         label_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len))).long()
 
         mask = autograd.Variable(torch.zeros((batch_size, max_seq_len))).byte()
-        for idx, (seq, label, seqlen) in enumerate(zip(words, labels, word_seq_lengths)):
-            word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
-            label_seq_tensor[idx, :seqlen] = torch.LongTensor(label)
-            mask[idx, :seqlen] = torch.Tensor([1]*seqlen.item())
+        if labels:
+            for idx, (seq, label, seqlen) in enumerate(zip(words, labels, word_seq_lengths)):
+                word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
+                label_seq_tensor[idx, :seqlen] = torch.LongTensor(label)
+                mask[idx, :seqlen] = torch.Tensor([1]*seqlen.item())
+        else:
+            for idx, (seq, seqlen) in enumerate(zip(words, word_seq_lengths)):
+                word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
+                mask[idx, :seqlen] = torch.Tensor([1]*seqlen.item())
 
         word_seq_lengths, word_perm_idx = word_seq_lengths.sort(0, descending=True)
         word_seq_tensor = word_seq_tensor[word_perm_idx]
 
-
-        label_seq_tensor = label_seq_tensor[word_perm_idx]
+        if labels:
+            label_seq_tensor = label_seq_tensor[word_perm_idx]
         mask = mask[word_perm_idx]
         ### deal with char
         # pad_chars (batch_size, max_seq_len)
@@ -68,11 +79,16 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
 
             word_seq_lengths = word_seq_lengths.cuda()
             word_seq_recover = word_seq_recover.cuda()
-            label_seq_tensor = label_seq_tensor.cuda()
+            if labels:
+                label_seq_tensor = label_seq_tensor.cuda()
             char_seq_tensor = char_seq_tensor.cuda()
             char_seq_recover = char_seq_recover.cuda()
             mask = mask.cuda()
-        return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
+
+        if labels:
+            return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
+        else:
+            return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, None, mask
 
 
 def recover_nbest_label(pred_variable, mask_variable, label_alphabet, word_recover):
@@ -114,27 +130,36 @@ def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet, w
     """
 
     pred_variable = pred_variable[word_recover]
-    gold_variable = gold_variable[word_recover]
+    if gold_variable is not None:
+        gold_variable = gold_variable[word_recover]
     mask_variable = mask_variable[word_recover]
-    batch_size = gold_variable.size(0)
-    seq_len = gold_variable.size(1)
+    batch_size = pred_variable.size(0)
+    seq_len = pred_variable.size(1)
     mask = mask_variable.cpu().data.numpy()
     pred_tag = pred_variable.cpu().data.numpy()
-    gold_tag = gold_variable.cpu().data.numpy()
+    if gold_variable is not None:
+        gold_tag = gold_variable.cpu().data.numpy()
     batch_size = mask.shape[0]
     pred_label = []
-    gold_label = []
+    if gold_variable is not None:
+        gold_label = []
     for idx in range(batch_size):
         pred = [label_alphabet.get_instance(pred_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
-        gold = [label_alphabet.get_instance(gold_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
+        if gold_variable is not None:
+            gold = [label_alphabet.get_instance(gold_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
+            assert (len(pred) == len(gold))
         # print "g:", gold, gold_tag.tolist()
-        assert (len(pred) == len(gold))
+
         pred_label.append(pred)
-        gold_label.append(gold)
-    return pred_label, gold_label
+        if gold_variable is not None:
+            gold_label.append(gold)
+    if gold_variable is not None:
+        return pred_label, gold_label
+    else:
+        return pred_label, None
 
 
-def evaluate(data, opt, model, name, nbest=0):
+def evaluate(data, opt, model, name, bEval, nbest=0):
     if name == "train":
         instances = data.train_Ids
     elif name == "dev":
@@ -174,14 +199,23 @@ def evaluate(data, opt, model, name, nbest=0):
         else:
             tag_seq = model(batch_word, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask)
         # print "tag:",tag_seq
-        pred_label, gold_label = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover)
-        pred_results += pred_label
-        gold_results += gold_label
+        if bEval:
+            pred_label, gold_label = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover)
+            pred_results += pred_label
+            gold_results += gold_label
+        else:
+            pred_label, _ = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover)
+            pred_results += pred_label
+
     decode_time = time.time() - start_time
     speed = len(instances)/decode_time
-    acc, p, r, f = get_ner_fmeasure(gold_results, pred_results)
-    if nbest>0:
-        return speed, acc, p, r, f, nbest_pred_results, pred_scores
+    if bEval:
+        acc, p, r, f = get_ner_fmeasure(gold_results, pred_results)
+    else:
+        acc, p, r, f = None, None, None, None
+    # if nbest>0:
+    #     return speed, acc, p, r, f, nbest_pred_results, pred_scores
+    # return speed, acc, p, r, f, pred_results, pred_scores
     return speed, acc, p, r, f, pred_results, pred_scores
 
 
@@ -199,6 +233,12 @@ def unfreeze_net(net):
         return
     for p in net.parameters():
         p.requires_grad = True
+
+def get_text_file(filename):
+    file = codecs.open(filename, 'r', 'UTF-8')
+    data = file.read()
+    file.close()
+    return data
 
 def get_bioc_file(filename):
     list_result = []
@@ -255,6 +295,13 @@ def stat_entity_overlap(annotation_dir, verbose=False):
         read_one_file(fileName, annotation_dir, entities_overlapped_types, verbose)
 
     print(entities_overlapped_types)
+
+def makedir_and_clear(dir_path):
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+        os.makedirs(dir_path)
+    else:
+        os.makedirs(dir_path)
 
 
 

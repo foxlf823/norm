@@ -40,4 +40,11 @@ class Entity:
             return False
 
 
+class Document:
+    def __init__(self):
+        self.entities = None
+        self.sentences = None
+        self.name = None
+
+
 

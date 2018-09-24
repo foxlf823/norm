@@ -26,11 +26,11 @@ if opt.whattodo == 1:
     if opt.test_file:
         d.test_data = data.loadData(opt.test_file)
 
-
     d.build_alphabet(d.train_data)
     d.build_alphabet(d.dev_data)
     if opt.test_file:
         d.build_alphabet(d.test_data)
+
     d.fix_alphabet()
 
     d.train_texts, d.train_Ids = data.read_instance(d.train_data, d.word_alphabet, d.char_alphabet, d.label_alphabet)
@@ -40,13 +40,14 @@ if opt.whattodo == 1:
 
     d.pretrain_word_embedding, d.word_emb_dim = data.build_pretrain_embedding(opt.word_emb_file, d.word_alphabet, opt.word_emb_dim, False)
 
-    if not os.path.exists(opt.output):
-        os.makedirs(opt.output)
-    d.save(os.path.join(opt.output, "data.pkl"))
     train.train(d, opt)
 
-else:
+    if not os.path.exists(opt.output):
+        os.makedirs(opt.output)
+    d.clear() # clear some data due it's useless when test
+    d.save(os.path.join(opt.output, "data.pkl"))
 
+else:
     d.load(os.path.join(opt.output, "data.pkl"))
 
     test.test(d, opt)
