@@ -29,10 +29,10 @@ class WordSequence(nn.Module):
         # The linear layer that maps from hidden state space to tag space
         self.hidden2tag = nn.Linear(opt.hidden_dim, data.label_alphabet.size()+2)
 
-        if self.gpu:
-            self.droplstm = self.droplstm.cuda()
-            self.hidden2tag = self.hidden2tag.cuda()
-            self.lstm = self.lstm.cuda()
+        if torch.cuda.is_available():
+            self.droplstm = self.droplstm.cuda(self.gpu)
+            self.hidden2tag = self.hidden2tag.cuda(self.gpu)
+            self.lstm = self.lstm.cuda(self.gpu)
 
 
     def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover):

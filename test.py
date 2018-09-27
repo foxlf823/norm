@@ -9,6 +9,7 @@ import spacy
 from data import processOneFile, read_instance_from_one_document
 import bioc
 from data_structure import Entity
+import logging
 
 def checkWrongState(labelSequence):
     positionNew = -1
@@ -89,7 +90,8 @@ def dump_results(doc_name, entities, opt):
 
 
 def test(data, opt):
-    corpus_dir = join(opt.test_file, 'corpus')
+    # corpus_dir = join(opt.test_file, 'corpus')
+    corpus_dir = join(opt.test_file, 'txt')
 
     spacy_nlp = spacy.load('en')
 
@@ -116,4 +118,4 @@ def test(data, opt):
 
 
 
-    print("test finished")
+    logging.info("test finished")

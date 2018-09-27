@@ -10,6 +10,7 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import codecs
+import logging
 
 def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     """
@@ -74,16 +75,16 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
         char_seq_tensor = char_seq_tensor[char_perm_idx]
         _, char_seq_recover = char_perm_idx.sort(0, descending=False)
         _, word_seq_recover = word_perm_idx.sort(0, descending=False)
-        if gpu:
-            word_seq_tensor = word_seq_tensor.cuda()
+        if torch.cuda.is_available():
+            word_seq_tensor = word_seq_tensor.cuda(gpu)
 
-            word_seq_lengths = word_seq_lengths.cuda()
-            word_seq_recover = word_seq_recover.cuda()
+            word_seq_lengths = word_seq_lengths.cuda(gpu)
+            word_seq_recover = word_seq_recover.cuda(gpu)
             if labels:
-                label_seq_tensor = label_seq_tensor.cuda()
-            char_seq_tensor = char_seq_tensor.cuda()
-            char_seq_recover = char_seq_recover.cuda()
-            mask = mask.cuda()
+                label_seq_tensor = label_seq_tensor.cuda(gpu)
+            char_seq_tensor = char_seq_tensor.cuda(gpu)
+            char_seq_recover = char_seq_recover.cuda(gpu)
+            mask = mask.cuda(gpu)
 
         if labels:
             return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
@@ -167,7 +168,7 @@ def evaluate(data, opt, model, name, bEval, nbest=0):
     elif name == 'test':
         instances = data.test_Ids
     else:
-        print "Error: wrong evaluate name,", name
+        logging.error("wrong evaluate name, {}".format(name))
     right_token = 0
     whole_token = 0
     nbest_pred_results = []
@@ -240,12 +241,19 @@ def get_text_file(filename):
     file.close()
     return data
 
+# bioc will try to use str even if you feed it with utf-8.
+# if bioc can't use str to denote something, it will use unicode
 def get_bioc_file(filename):
-    list_result = []
-    with bioc.iterparse(filename) as parser:
-        for document in parser:
-            list_result.append(document)
-    return list_result
+    with codecs.open(filename, 'r', 'UTF-8') as fp:
+        data = fp.read()
+        collection = bioc.loads(data)
+        return collection.documents
+
+    # list_result = []
+    # with bioc.iterparse(filename) as parser:
+    #     for document in parser:
+    #         list_result.append(document)
+    # return list_result
 
 def is_overlapped(a, b):
     if ((a.start <= b.start and a.end > b.start) or (a.start < b.end and a.end >= b.end) or
@@ -254,7 +262,7 @@ def is_overlapped(a, b):
     else:
         return False
 
-def read_one_file(fileName, annotation_dir, entities_overlapped_types, verbose):
+def read_one_file(fileName, annotation_dir, entities_overlapped_types):
     annotation_file = get_bioc_file(join(annotation_dir, fileName))
 
     bioc_passage = annotation_file[0].passages[0]
@@ -269,8 +277,8 @@ def read_one_file(fileName, annotation_dir, entities_overlapped_types, verbose):
 
         for old_entity in entities:
             if is_overlapped(entity_, old_entity):
-                if verbose:
-                    print("entity overlapped: doc:{}, entity1_id:{}, entity1_type:{}, entity1_span:{} {}, entity2_id:{}, entity2_type:{}, entity2_span:{} {}"
+
+                logging.debug("entity overlapped: doc:{}, entity1_id:{}, entity1_type:{}, entity1_span:{} {}, entity2_id:{}, entity2_type:{}, entity2_span:{} {}"
                           .format(fileName, old_entity.id, old_entity.type, old_entity.start, old_entity.end,
                                   entity_.id, entity_.type, entity_.start, entity_.end))
 
@@ -286,13 +294,13 @@ def read_one_file(fileName, annotation_dir, entities_overlapped_types, verbose):
         entities.append(entity_)
 
 
-def stat_entity_overlap(annotation_dir, verbose=False):
+def stat_entity_overlap(annotation_dir):
     annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
 
     entities_overlapped_types = {}
 
     for fileName in annotation_files:
-        read_one_file(fileName, annotation_dir, entities_overlapped_types, verbose)
+        read_one_file(fileName, annotation_dir, entities_overlapped_types)
 
     print(entities_overlapped_types)
 
@@ -309,3 +317,5 @@ def makedir_and_clear(dir_path):
 # stat_entity_overlap("/Users/feili/Desktop/umass/MADE/MADE-1.0/annotations")
 # print("stat entity overlapped in Cardio .........")
 # stat_entity_overlap('/Users/feili/Desktop/umass/bioC_data/Cardio_train/annotations')
+
+#stat_entity_overlap('/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017/bioc')

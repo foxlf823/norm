@@ -8,7 +8,7 @@ from my_utils import get_bioc_file, get_text_file
 import spacy
 from data_structure import Entity, Document
 from options import opt
-
+import logging
 
 def getLabel(start, end, entities):
     match = ""
@@ -51,12 +51,13 @@ def get_sentences_and_tokens_from_spacy(text, spacy_nlp, entities):
                 continue
             # Make sure that the token text does not contain any space
             if len(token_dict['text'].split(' ')) != 1:
-                print("WARNING: the text of the token contains space character, replaced with hyphen\n\t{0}\n\t{1}".format(token_dict['text'],
+                logging.warning("the text of the token contains space character, replaced with hyphen\n\t{0}\n\t{1}".format(token_dict['text'],
                                                                                                                            token_dict['text'].replace(' ', '-')))
                 token_dict['text'] = token_dict['text'].replace(' ', '-')
 
             # get label
-            if entities:
+            if entities is not None:
+            # if entities:
                 token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
 
             sentence_tokens.append(token_dict)
@@ -65,7 +66,7 @@ def get_sentences_and_tokens_from_spacy(text, spacy_nlp, entities):
 
 def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
     document = Document()
-    document.name = fileName
+    document.name = fileName[:fileName.find('.')]
 
     if annotation_dir:
         annotation_file = get_bioc_file(join(annotation_dir, fileName))
@@ -76,8 +77,18 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
             if opt.types and (entity.infons['type'] not in opt.type_filter):
                 continue
             entity_ = Entity()
+            if isinstance(entity.text, str):
+                text = entity.text.decode('utf-8')
+            else: # unicode
+                text = entity.text
             entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
-                           entity.text.decode('utf-8'), None, None, None)
+                           text, None, None, None)
+            # try:
+            #     entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
+            #                entity.text.decode('utf-8'), None, None, None)
+            # except Exception, e:
+            #     print("entity.text.decode error: document:{}, entity.id:{}".format(fileName, entity.id))
+            #     continue
             entities.append(entity_)
 
         document.entities = entities
@@ -96,8 +107,11 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
 
 
 def loadData(basedir):
-    annotation_dir = join(basedir, 'annotations')
-    corpus_dir = join(basedir, 'corpus')
+    # annotation_dir = join(basedir, 'annotations')
+    # corpus_dir = join(basedir, 'corpus')
+
+    annotation_dir = join(basedir, 'bioc')
+    corpus_dir = join(basedir, 'txt')
 
     spacy_nlp = spacy.load('en')
 
@@ -279,7 +293,7 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
             pretrain_emb[index,:] = np.random.uniform(-scale, scale, [1, embedd_dim])
             not_match += 1
     pretrained_size = len(embedd_dict)
-    print("Embedding:\n     pretrain word:%s, prefect match:%s, case_match:%s, oov:%s, oov%%:%s"%(pretrained_size, perfect_match, case_match, not_match, (not_match+0.)/alphabet_size))
+    logging.info("Embedding:\n     pretrain word:%s, prefect match:%s, case_match:%s, oov:%s, oov%%:%s"%(pretrained_size, perfect_match, case_match, not_match, (not_match+0.)/alphabet_size))
     return pretrain_emb, embedd_dim
 
 
@@ -324,6 +338,11 @@ class Data:
                 for token in sentence:
                     self.word_alphabet.add(token['text'])
                     self.label_alphabet.add(token['label'])
+                    # try:
+                    #     self.label_alphabet.add(token['label'])
+                    # except Exception, e:
+                    #     print("document id {} {} {}".format(document.name))
+                    #     exit()
                     for char in token['text']:
                         self.char_alphabet.add(char)
 

@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch
 import time
 import random
-import numpy as np
+import logging
 
 import os
 import my_utils
@@ -58,31 +58,30 @@ def train(data, opt):
             model.zero_grad()
 
         epoch_finish = time.time()
-        print("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
+        logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
 
         _, _, p, r, f, _, _ = evaluate(data, opt, model, "dev", True)
-        print("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
+        logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
 
         if f > best_dev:
-            print "Exceed previous best f score on dev:", best_dev
+            logging.info("Exceed previous best f score on dev: ".format(best_dev))
 
             torch.save(model.state_dict(), os.path.join(opt.output, "model.pkl"))
             best_dev = f
 
             if opt.test_file:
                 _, _, p, r, f, _, _ = evaluate(data, opt, model, "test", True, opt.nbest)
-                print("Test: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
+                logging.info("Test: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
 
             bad_counter = 0
         else:
             bad_counter += 1
 
         if bad_counter >= opt.patience:
-            print('Early Stop!')
+            logging.info('Early Stop!')
             break
 
-
-    print("train finished")
+    logging.info("train finished")
 
 
 

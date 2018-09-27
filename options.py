@@ -12,7 +12,7 @@ parser.add_argument('-iter', type=int, default=100)
 parser.add_argument('-gpu', type=int, default=0)
 parser.add_argument('-tune_wordemb', action='store_true', default=False)
 parser.add_argument('-lr', type=float, default=0.001)
-parser.add_argument('-word_emb_file', default='/Users/feili/project/emb_100_for_debug.bin')
+parser.add_argument('-word_emb_file', default=None)
 parser.add_argument('-word_emb_dim', type=int, default=100)
 parser.add_argument('-hidden_dim', type=int, default=100)
 parser.add_argument('-char_emb_dim', type=int, default=24)
@@ -21,7 +21,7 @@ parser.add_argument('-batch_size', type=int, default=8)
 parser.add_argument('-dropout', type=float, default=0.5)
 parser.add_argument('-l2', type=float, default=1e-8)
 parser.add_argument('-nbest', type=int, default=0)
-parser.add_argument('-patience', type=int, default=10)
+parser.add_argument('-patience', type=int, default=20)
 parser.add_argument('-gradient_clip', type=float, default=5.0)
 parser.add_argument('-types', default=None) # a,b,c
 parser.add_argument('-predict', default='./predict')
@@ -34,4 +34,7 @@ if opt.types:
     opt.type_filter = set()
     for t in types_:
         opt.type_filter.add(t)
+
+if opt.test_file.lower() == 'none':
+    opt.test_file = None
 

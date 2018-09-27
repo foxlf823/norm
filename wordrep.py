@@ -24,11 +24,10 @@ class WordRep(nn.Module):
             self.word_embedding.weight.data.copy_(torch.from_numpy(data.pretrain_word_embedding))
         else:
             self.word_embedding.weight.data.copy_(torch.from_numpy(self.random_embedding(data.word_alphabet.size(), self.embedding_dim)))
-        
 
-        if self.gpu:
-            self.drop = self.drop.cuda()
-            self.word_embedding = self.word_embedding.cuda()
+        if torch.cuda.is_available():
+            self.drop = self.drop.cuda(self.gpu)
+            self.word_embedding = self.word_embedding.cuda(self.gpu)
 
 
 
