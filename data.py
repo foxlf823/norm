@@ -4,11 +4,15 @@ import numpy as np
 import cPickle as pickle
 from os import listdir
 from os.path import isfile, join
-from my_utils import get_bioc_file, get_text_file
+from my_utils import get_bioc_file, get_text_file, normalize_word
 import spacy
 from data_structure import Entity, Document
 from options import opt
 import logging
+import re
+import nltk
+from my_corenlp_wrapper import StanfordCoreNLP
+import json
 
 def getLabel(start, end, entities):
     match = ""
@@ -64,6 +68,125 @@ def get_sentences_and_tokens_from_spacy(text, spacy_nlp, entities):
         sentences.append(sentence_tokens)
     return sentences
 
+pattern = re.compile(r'[-_/]+')
+
+def my_split(s):
+    text = []
+    iter = re.finditer(pattern, s)
+    start = 0
+    for i in iter:
+        if start != i.start():
+            text.append(s[start: i.start()])
+        text.append(s[i.start(): i.end()])
+        start = i.end()
+    if start != len(s):
+        text.append(s[start: ])
+    return text
+
+def my_tokenize(txt):
+    tokens1 = nltk.word_tokenize(txt.replace('"', " "))  # replace due to nltk transfer " to other character, see https://github.com/nltk/nltk/issues/1630
+    tokens2 = []
+    for token1 in tokens1:
+        token2 = my_split(token1)
+        tokens2.extend(token2)
+    return tokens2
+
+# if add pos, add to the end, so external functions don't need to be modified too much
+# def text_tokenize_and_postagging(txt, sent_start):
+#     tokens= my_tokenize(txt)
+#     pos_tags = nltk.pos_tag(tokens)
+#
+#     offset = 0
+#     for token, pos_tag in pos_tags:
+#         offset = txt.find(token, offset)
+#         yield token, pos_tag, offset+sent_start, offset+len(token)+sent_start
+#         offset += len(token)
+
+def text_tokenize_and_postagging(txt, sent_start):
+    tokens= my_tokenize(txt)
+
+    offset = 0
+    for token in tokens:
+        offset = txt.find(token, offset)
+        yield token, offset+sent_start, offset+len(token)+sent_start
+        offset += len(token)
+
+def token_from_sent(txt, sent_start):
+    return [token for token in text_tokenize_and_postagging(txt, sent_start)]
+
+def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities):
+    all_sents_inds = []
+    generator = nlp_tool.span_tokenize(text)
+    for t in generator:
+        all_sents_inds.append(t)
+
+    sentences = []
+    for ind in range(len(all_sents_inds)):
+        t_start = all_sents_inds[ind][0]
+        t_end = all_sents_inds[ind][1]
+        tmp_tokens = token_from_sent(text[t_start:t_end], t_start)
+        sentence_tokens = []
+        for token in tmp_tokens:
+            token_dict = {}
+            token_dict['start'], token_dict['end'] = token[1], token[2]
+            token_dict['text'] = token[0]
+            if token_dict['text'].strip() in ['\n', '\t', ' ', '']:
+                continue
+            # Make sure that the token text does not contain any space
+            if len(token_dict['text'].split(' ')) != 1:
+                logging.warning("the text of the token contains space character, replaced with hyphen\n\t{0}\n\t{1}".format(token_dict['text'],
+                                                                                                                           token_dict['text'].replace(' ', '-')))
+                token_dict['text'] = token_dict['text'].replace(' ', '-')
+
+            # get label
+            if entities is not None:
+                token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
+
+            sentence_tokens.append(token_dict)
+        sentences.append(sentence_tokens)
+    return sentences
+
+def get_stanford_annotations(text, core_nlp, port=9000, annotators='tokenize,ssplit,pos,lemma'):
+    text = text.encode("utf-8")
+    output = core_nlp.annotate(text, properties={
+        "timeout": "10000",
+        "ssplit.newlineIsSentenceBreak": "two",
+        'annotators': annotators,
+        'outputFormat': 'json'
+    })
+    # if type(output) is str:
+    if type(output) is unicode:
+        output = json.loads(output, strict=False)
+    return output
+
+def get_sentences_and_tokens_from_stanford(text, nlp_tool, entities):
+    stanford_output = get_stanford_annotations(text, nlp_tool)
+    sentences = []
+    temp = stanford_output['sentences']
+    for sentence in stanford_output['sentences']:
+        sentence_tokens = []
+        for stanford_token in sentence['tokens']:
+            token_dict = {}
+            token_dict['start'] = int(stanford_token['characterOffsetBegin'])
+            token_dict['end'] = int(stanford_token['characterOffsetEnd'])
+            token_dict['text'] = text[token_dict['start']:token_dict['end']]
+            if token_dict['text'].strip() in ['\n', '\t', ' ', '']:
+                continue
+            # Make sure that the token text does not contain any space
+            if len(token_dict['text'].split(' ')) != 1:
+                logging.warning("WARNING: the text of the token contains space character, replaced with hyphen\n\t{0}\n\t{1}".format(token_dict['text'],
+                                                                                                                                     token_dict['text'].replace(' ', '-')))
+                token_dict['text'] = token_dict['text'].replace(' ', '-')
+
+            # get label
+            if entities is not None:
+                token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
+
+            sentence_tokens.append(token_dict)
+        sentences.append(sentence_tokens)
+    return sentences
+
+
 def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
     document = Document()
     document.name = fileName[:fileName.find('.')]
@@ -95,10 +218,24 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
 
     corpus_file = get_text_file(join(corpus_dir, fileName.split('.bioc')[0]))
 
-    if annotation_dir:
-        sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, document.entities)
+    if opt.nlp_tool == "spacy":
+        if annotation_dir:
+            sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, document.entities)
+        else:
+            sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, None)
+    elif opt.nlp_tool == "nltk":
+        if annotation_dir:
+            sentences = get_sentences_and_tokens_from_nltk(corpus_file, nlp_tool, document.entities)
+        else:
+            sentences = get_sentences_and_tokens_from_nltk(corpus_file, nlp_tool, None)
+    elif opt.nlp_tool == "stanford":
+        if annotation_dir:
+            sentences = get_sentences_and_tokens_from_stanford(corpus_file, nlp_tool, document.entities)
+        else:
+            sentences = get_sentences_and_tokens_from_stanford(corpus_file, nlp_tool, None)
     else:
-        sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, None)
+        raise RuntimeError("invalid nlp tool")
+
 
     document.sentences = sentences
 
@@ -112,14 +249,25 @@ def loadData(basedir):
 
     annotation_dir = join(basedir, 'bioc')
     corpus_dir = join(basedir, 'txt')
-
-    spacy_nlp = spacy.load('en')
+    # spacy, nltk, stanford
+    if opt.nlp_tool == "spacy":
+        nlp_tool = spacy.load('en')
+    elif opt.nlp_tool == "nltk":
+        nlp_tool = nltk.data.load('tokenizers/punkt/english.pickle')
+    elif opt.nlp_tool == "stanford":
+        nlp_tool = StanfordCoreNLP('http://localhost:{0}'.format(9000))
+    else:
+        raise RuntimeError("invalid nlp tool")
 
     documents = []
 
     annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
     for fileName in annotation_files:
-        document = processOneFile(fileName, annotation_dir, corpus_dir, spacy_nlp)
+        try:
+            document = processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool)
+        except Exception, e:
+            logging.error("process file {} error: {}".format(fileName, e))
+            continue
 
         documents.append(document)
 
@@ -137,14 +285,17 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
         label_Ids = []
 
         for token in sentence:
-            words.append(token['text'])
-            word_Ids.append(word_alphabet.get_index(token['text']))
+            word = token['text']
+            if opt.number_normalized:
+                word = normalize_word(word)
+            words.append(word)
+            word_Ids.append(word_alphabet.get_index(word))
             if 'label' in token:
                 labels.append(token['label'])
                 label_Ids.append(label_alphabet.get_index(token['label']))
             char_list = []
             char_Id = []
-            for char in token['text']:
+            for char in word:
                 char_list.append(char)
                 char_Id.append(char_alphabet.get_index(char))
             chars.append(char_list)
@@ -275,6 +426,8 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
     pretrain_emb = np.empty([word_alphabet.size(), embedd_dim])
     perfect_match = 0
     case_match = 0
+    digits_replaced_with_zeros_found = 0
+    lowercase_and_digits_replaced_with_zeros_found = 0
     not_match = 0
     for word, index in word_alphabet.iteritems():
         if word in embedd_dict:
@@ -289,11 +442,26 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
             else:
                 pretrain_emb[index,:] = embedd_dict[word.lower()]
             case_match += 1
+        # elif re.sub('\d', '0', word) in embedd_dict:
+        #     if norm:
+        #         pretrain_emb[index,:] = norm2one(embedd_dict[re.sub('\d', '0', word)])
+        #     else:
+        #         pretrain_emb[index,:] = embedd_dict[re.sub('\d', '0', word)]
+        #     digits_replaced_with_zeros_found += 1
+        # elif re.sub('\d', '0', word.lower()) in embedd_dict:
+        #     if norm:
+        #         pretrain_emb[index,:] = norm2one(embedd_dict[re.sub('\d', '0', word.lower())])
+        #     else:
+        #         pretrain_emb[index,:] = embedd_dict[re.sub('\d', '0', word.lower())]
+        #     lowercase_and_digits_replaced_with_zeros_found += 1
         else:
             pretrain_emb[index,:] = np.random.uniform(-scale, scale, [1, embedd_dim])
             not_match += 1
     pretrained_size = len(embedd_dict)
-    logging.info("Embedding:\n     pretrain word:%s, prefect match:%s, case_match:%s, oov:%s, oov%%:%s"%(pretrained_size, perfect_match, case_match, not_match, (not_match+0.)/alphabet_size))
+    logging.info("Embedding:\n     pretrain word:%s, prefect match:%s, case_match:%s, dig_zero_match:%s, "
+                 "case_dig_zero_match:%s, oov:%s, oov%%:%s"
+                 %(pretrained_size, perfect_match, case_match, digits_replaced_with_zeros_found,
+                   lowercase_and_digits_replaced_with_zeros_found, not_match, (not_match+0.)/alphabet_size))
     return pretrain_emb, embedd_dim
 
 
@@ -336,14 +504,17 @@ class Data:
         for document in data:
             for sentence in document.sentences:
                 for token in sentence:
-                    self.word_alphabet.add(token['text'])
+                    word = token['text']
+                    if opt.number_normalized:
+                        word = normalize_word(word)
+                    self.word_alphabet.add(word)
                     self.label_alphabet.add(token['label'])
                     # try:
                     #     self.label_alphabet.add(token['label'])
                     # except Exception, e:
                     #     print("document id {} {} {}".format(document.name))
                     #     exit()
-                    for char in token['text']:
+                    for char in word:
                         self.char_alphabet.add(char)
 
 

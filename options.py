@@ -25,6 +25,8 @@ parser.add_argument('-patience', type=int, default=20)
 parser.add_argument('-gradient_clip', type=float, default=5.0)
 parser.add_argument('-types', default=None) # a,b,c
 parser.add_argument('-predict', default='./predict')
+parser.add_argument('-number_normalized', action='store_true', default=False)
+parser.add_argument('-nlp_tool', default='spacy', help='spacy, nltk, stanford')
 
 
 opt = parser.parse_args()

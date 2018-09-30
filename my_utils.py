@@ -262,6 +262,15 @@ def is_overlapped(a, b):
     else:
         return False
 
+def normalize_word(word):
+    new_word = ""
+    for char in word:
+        if char.isdigit():
+            new_word += '0'
+        else:
+            new_word += char
+    return new_word
+
 def read_one_file(fileName, annotation_dir, entities_overlapped_types):
     annotation_file = get_bioc_file(join(annotation_dir, fileName))
 
