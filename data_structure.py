@@ -9,6 +9,7 @@ class Entity:
         self.sent_idx = None
         self.tf_start = None
         self.tf_end = None
+        self.norm_id = None
 
     def create(self, id, type, start, end, text, sent_idx, tf_start, tf_end):
         self.id = id
@@ -35,6 +36,12 @@ class Entity:
 
     def equals(self, other):
         if self.type == other.type and self.start == other.start and self.end == other.end:
+            return True
+        else:
+            return False
+
+    def equals_span(self, other):
+        if self.start == other.start and self.end == other.end:
             return True
         else:
             return False
