@@ -31,7 +31,10 @@ def getLabel(start, end, entities):
             break
 
     if match != "":
-        return match+"-"+entity.type
+        if opt.no_type:
+            return match + "-" +"X"
+        else:
+            return match+"-"+entity.type
     else:
         return "O"
 

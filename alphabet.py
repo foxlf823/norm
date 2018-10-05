@@ -1,13 +1,4 @@
-# -*- coding: utf-8 -*-
-# @Author: Max
-# @Date:   2018-01-19 11:33:37
-# @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2018-04-26 13:56:03
 
-
-"""
-Alphabet maps objects to integer ids. It provides two way mapping from the index to the objects.
-"""
 import json
 import os
 

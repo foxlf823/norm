@@ -10,6 +10,8 @@ from data import processOneFile, read_instance_from_one_document
 import bioc
 from data_structure import Entity
 import logging
+import nltk
+from my_corenlp_wrapper import StanfordCoreNLP
 
 def checkWrongState(labelSequence):
     positionNew = -1
@@ -84,7 +86,7 @@ def dump_results(doc_name, entities, opt):
         anno_entity.add_location(anno_entity_location)
         anno_entity.text = entity.text
 
-    with codecs.open(os.path.join(opt.predict, doc_name + ".bioc.xml"), 'w') as fp:
+    with codecs.open(os.path.join(opt.predict, doc_name + ".bioc.xml"), 'w', 'UTF-8') as fp:
         bioc.dump(collection, fp)
 
 
@@ -93,7 +95,14 @@ def test(data, opt):
     # corpus_dir = join(opt.test_file, 'corpus')
     corpus_dir = join(opt.test_file, 'txt')
 
-    spacy_nlp = spacy.load('en')
+    if opt.nlp_tool == "spacy":
+        nlp_tool = spacy.load('en')
+    elif opt.nlp_tool == "nltk":
+        nlp_tool = nltk.data.load('tokenizers/punkt/english.pickle')
+    elif opt.nlp_tool == "stanford":
+        nlp_tool = StanfordCoreNLP('http://localhost:{0}'.format(9000))
+    else:
+        raise RuntimeError("invalid nlp tool")
 
     corpus_files = [f for f in listdir(corpus_dir) if isfile(join(corpus_dir, f))]
 
@@ -103,18 +112,22 @@ def test(data, opt):
     makedir_and_clear(opt.predict)
 
     for fileName in corpus_files:
-        document = processOneFile(fileName, None, corpus_dir, spacy_nlp)
+        try:
+            document = processOneFile(fileName, None, corpus_dir, nlp_tool)
 
-        data.test_texts = []
-        data.test_Ids = []
-        read_instance_from_one_document(document, data.word_alphabet, data.char_alphabet, data.label_alphabet,
-                                        data.test_texts, data.test_Ids)
+            data.test_texts = []
+            data.test_Ids = []
+            read_instance_from_one_document(document, data.word_alphabet, data.char_alphabet, data.label_alphabet,
+                                            data.test_texts, data.test_Ids)
 
-        _, _, _, _, _, pred_results, _ = evaluate(data, opt, model, 'test', False, opt.nbest)
+            _, _, _, _, _, pred_results, _ = evaluate(data, opt, model, 'test', False, opt.nbest)
 
-        entities = translateResultsintoEntities(document.sentences, pred_results, fileName)
+            entities = translateResultsintoEntities(document.sentences, pred_results, fileName)
 
-        dump_results(fileName, entities, opt)
+            dump_results(fileName, entities, opt)
+        except Exception, e:
+            logging.error("process file {} error: {}".format(fileName, e))
+            continue
 
 
 

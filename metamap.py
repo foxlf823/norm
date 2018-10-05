@@ -7,6 +7,7 @@ import os
 import codecs
 from my_utils import makedir_and_clear
 from data_structure import Entity,Document
+import re
 
 
 def apply_metamap_to(input_dir, output_dir):
@@ -14,13 +15,17 @@ def apply_metamap_to(input_dir, output_dir):
 
     for input_file_name in listdir(input_dir):
         input_file_path = join(input_dir, input_file_name)
-        output_file_name = input_file_name[0:input_file_name.rfind('.')]+".field.txt"
+        if input_file_name.rfind('.') == -1:
+            output_file_name = input_file_name + ".field.txt"
+        else:
+            output_file_name = input_file_name[0:input_file_name.rfind('.')]+".field.txt"
         output_file_path = join(output_dir, output_file_name)
         os.system('/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -R SNOMEDCT_US -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(
                 input_file_path, output_file_path))
         # os.system('/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(input_file_path, output_file_path))
 
 def load_metamap_result_from_file(file_path):
+    re_brackets = re.compile(ur'\[[0-9|/]+\]')
     document = Document()
     entities = []
     with codecs.open(file_path, 'r', 'UTF-8') as fp:
@@ -48,21 +53,44 @@ def load_metamap_result_from_file(file_path):
                 raise RuntimeError("the number of triggers is not equal to that of spans: {} in {}".format(UMLS_ID, file_path[file_path.rfind('/')+1:]))
 
             for idx, span in enumerate(spans):
-                if span.find(u',') != -1:
-                    print("ignore non-simple form of Positional_Information: {} in {}".format(triggers[idx], file_path[file_path.rfind('/')+1:]))
-                    continue
+                bracket_spans = re_brackets.findall(span)
+                if len(bracket_spans) == 0: # simple form
+                    if span.find(u',') != -1:
+                        print("ignore non-continuous form of Positional_Information: {} in {}".format(triggers[idx],
+                                                                                                  file_path[
+                                                                                                  file_path.rfind(
+                                                                                                      '/') + 1:]))
+                        continue
 
-                tmps = span.split(u"/")
-                entity = Entity()
-                entity.start = int(tmps[0])
-                entity.end = int(tmps[0])+int(tmps[1])
-                entity.norm_id = str(UMLS_ID)
-                # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
-                tmps = triggers[idx].split(u"-")
-                entity.text = tmps[3]
+                    tmps = span.split(u"/")
+                    entity = Entity()
+                    entity.start = int(tmps[0])
+                    entity.end = int(tmps[0]) + int(tmps[1])
+                    entity.norm_id = str(UMLS_ID)
+                    # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
+                    tmps = triggers[idx].split(u"-")
+                    entity.text = tmps[3]
 
-                entities.append(entity)
+                    entities.append(entity)
+                else:
+                    for bracket_span in bracket_spans:
+                        if bracket_span.find(u',') != -1:
+                            print("ignore non-continuous form of Positional_Information: {} in {}".format(triggers[idx],
+                                                                                                      file_path[
+                                                                                                      file_path.rfind(
+                                                                                                          '/') + 1:]))
+                            continue
 
+                        tmps = bracket_span[1:-1].split(u"/")
+                        entity = Entity()
+                        entity.start = int(tmps[0])
+                        entity.end = int(tmps[0]) + int(tmps[1])
+                        entity.norm_id = str(UMLS_ID)
+                        # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
+                        tmps = triggers[idx].split(u"-")
+                        entity.text = tmps[3]
+
+                        entities.append(entity)
 
 
     document.entities = entities
@@ -72,6 +100,11 @@ def load_metamap_result_from_file(file_path):
 if __name__=="__main__":
 
 # ./bin/metamap -y -I -N --blanklines 0  29_2011-11-15+OC.txt 29_2011-11-15+OC.field.txt
-    apply_metamap_to("/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/txt", "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap")
+#     apply_metamap_to("/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/txt", "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap")
 
 # load_metamap_result_from_file("/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap/29_2011-11-15+OC.field.txt")
+    load_metamap_result_from_file(
+    "/Users/feili/Desktop/umass/bioC_data/other/cardio_data/metamap/1001_266.field.txt")
+
+
+    pass
