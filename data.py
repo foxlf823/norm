@@ -264,6 +264,8 @@ def loadData(basedir):
 
     documents = []
 
+    count_entity_mention = 0
+
     annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
     for fileName in annotation_files:
         try:
@@ -273,6 +275,10 @@ def loadData(basedir):
             continue
 
         documents.append(document)
+
+        count_entity_mention += len(document.entities)
+
+    logging.info("{} entities in {}".format(count_entity_mention, basedir))
 
     return documents
 

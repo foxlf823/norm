@@ -12,6 +12,7 @@ from data_structure import Entity
 import logging
 import nltk
 from my_corenlp_wrapper import StanfordCoreNLP
+import time
 
 def checkWrongState(labelSequence):
     positionNew = -1
@@ -93,7 +94,8 @@ def dump_results(doc_name, entities, opt):
 
 def test(data, opt):
     # corpus_dir = join(opt.test_file, 'corpus')
-    corpus_dir = join(opt.test_file, 'txt')
+    # corpus_dir = join(opt.test_file, 'txt')
+    corpus_dir = opt.test_file
 
     if opt.nlp_tool == "spacy":
         nlp_tool = spacy.load('en')
@@ -107,12 +109,22 @@ def test(data, opt):
     corpus_files = [f for f in listdir(corpus_dir) if isfile(join(corpus_dir, f))]
 
     model = SeqModel(data, opt)
-    model.load_state_dict(torch.load(os.path.join(opt.output, 'model.pkl')))
+    if opt.test_in_cpu:
+        model.load_state_dict(
+            torch.load(os.path.join(opt.output, 'model.pkl'), map_location='cpu'))
+    else:
+        model.load_state_dict(torch.load(os.path.join(opt.output, 'model.pkl')))
+
+    # model.load_state_dict(torch.load(os.path.join(opt.output, 'model.pkl')))
 
     makedir_and_clear(opt.predict)
 
+    ct_success = 0
+    ct_error = 0
+
     for fileName in corpus_files:
         try:
+            start = time.time()
             document = processOneFile(fileName, None, corpus_dir, nlp_tool)
 
             data.test_texts = []
@@ -125,10 +137,13 @@ def test(data, opt):
             entities = translateResultsintoEntities(document.sentences, pred_results, fileName)
 
             dump_results(fileName, entities, opt)
+
+            end = time.time()
+            logging.info("process %s complete with %.2fs" % (fileName, end - start))
+
+            ct_success += 1
         except Exception, e:
             logging.error("process file {} error: {}".format(fileName, e))
-            continue
+            ct_error += 1
 
-
-
-    logging.info("test finished")
+    logging.info("test finished, total {}, error {}".format(ct_success + ct_error, ct_error))

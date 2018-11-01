@@ -28,6 +28,7 @@ parser.add_argument('-predict', default='./predict')
 parser.add_argument('-number_normalized', action='store_true', default=False)
 parser.add_argument('-nlp_tool', default='spacy', help='spacy, nltk, stanford')
 parser.add_argument('-no_type', action='store_true', default=False)
+parser.add_argument('-test_in_cpu', action='store_true', default=False)
 
 
 opt = parser.parse_args()
