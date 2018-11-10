@@ -649,7 +649,7 @@ class Concept:
         self.stemmedName = None
         self.cui = None
         self.alternateCuis = None
-        self.normalizingSieveLevel = None
+        self.normalizingSieveLevel = 0
         self.namesKnowledgeBase = list()
         self.stemmedNamesKnowledgeBase = list()
 
@@ -761,6 +761,14 @@ class Evaluation:
     tp = 0
     fp = 0
     accuracy = 0.0
+    map_whichSieveFires = dict()
+
+    @classmethod
+    def initialize(self, opt):
+
+        for i in range(opt.max_sieve+1):
+            Evaluation.map_whichSieveFires[i] = 0
+
 
     @classmethod
     def incrementTotal(self):
@@ -816,6 +824,10 @@ class Evaluation:
         else :
             Evaluation.incrementFP()
 
+        count = Evaluation.map_whichSieveFires.get(concept.normalizingSieveLevel)
+        count += 1
+        Evaluation.map_whichSieveFires[concept.normalizingSieveLevel] = count
+
     @classmethod
     def computeAccuracy(self):
 
@@ -830,6 +842,17 @@ class Evaluation:
         print("False Normalizations: {}".format(Evaluation.fp))
         print("Accuracy: {}".format(Evaluation.accuracy))
         print("*********************")
+
+        for sieve_level in Evaluation.map_whichSieveFires:
+            if sieve_level == 0:
+                print("{} unmapped names, accounting for {:.2f}%".format(Evaluation.map_whichSieveFires[sieve_level],
+                                                                        Evaluation.map_whichSieveFires[sieve_level]*100.0/Evaluation.totalNames))
+            else:
+                print("Sieve {} fires {} times, accounting for {:.2f}%".format(sieve_level, Evaluation.map_whichSieveFires[sieve_level],
+                                                                        Evaluation.map_whichSieveFires[sieve_level]*100.0/Evaluation.totalNames))
+
+        print("*********************")
+
 
 
 
@@ -1667,6 +1690,8 @@ def init(opt):
 
 
     MultiPassSieveNormalizer.maxSieveLevel = opt.max_sieve
+
+    Evaluation.initialize(opt)
 
 def runMultiPassSieve(opt):
     Sieve.setStandardTerminology(opt.dict)
