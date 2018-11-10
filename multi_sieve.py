@@ -43,6 +43,24 @@ class Util:
 
         return len(first_ & second_) != 0
 
+    @classmethod
+    def getTokenIndex (self, tokens, token):
+        i = 0
+        while i < len(tokens):
+            if tokens[i] == token:
+                return i
+            i += 1
+
+        return -1
+
+    @classmethod
+    def addUnique(self, list, newList):
+        for value in newList:
+            list = Util.setList(list, value)
+        return list
+
+
+
 
 class Abbreviation:
     wikiAbbreviationExpansionListMap = dict()
@@ -229,6 +247,12 @@ class Ling:
     affixMap = dict()
     startJVM(getDefaultJVMPath(), "-ea", "-Dfile.encoding=UTF-8", "-Djava.class.path={}".format(os.path.abspath(".")))
     PorterStemmer = JClass("PorterStemmer")
+    AFFIX = u"ganglioma|cancer"
+    PLURAL_DISORDER_SYNONYMS = [u"diseases", u"disorders", u"conditions", u"syndromes", u"symptoms",
+                                             u"abnormalities", u"events", u"episodes", u"issues", u"impairments"]
+    PREPOSITIONS = [u"in", u"with", u"on", u"of"]
+    SINGULAR_DISORDER_SYNONYMS = [u"disease", u"disorder", u"condition", u"syndrome", u"symptom",
+                                               u"abnormality", u"NOS", u"event", u"episode", u"issue", u"impairment"]
 
     def __init__(self):
         pass
@@ -328,6 +352,127 @@ class Ling:
 
 
 
+    @classmethod
+    def getStringPreposition(self, string):
+        for preposition in Ling.PREPOSITIONS:
+            if string.find(u" "+preposition+u" ") != -1:
+                return preposition
+
+        return u""
+
+    @classmethod
+    def getSubstring(self, tokens, begin, end):
+        substring = u""
+        i = begin
+        while i < end:
+            substring += tokens[i]+u" "
+            i += 1
+
+        substring = substring.strip()
+        return substring
+
+    @classmethod
+    def getDigitToWordMap(self):
+
+        return Ling.digitToWordMap
+
+    @classmethod
+    def getWordToDigitMap(self):
+        return Ling.wordToDigitMap
+
+    @classmethod
+    def getSuffix_(self, str, len_):
+        if len(str) < len_:
+            return u""
+
+        return str[len(str) - len_]
+
+    @classmethod
+    def getSuffix(self, str):
+        if Ling.getSuffix_(str, 10) in Ling.suffixMap:
+            return Ling.getSuffix_(str, 10)
+        else:
+            if Ling.getSuffix_(str, 7) in  Ling.suffixMap:
+                return Ling.getSuffix_(str, 7)
+            else:
+                if Ling.getSuffix_(str, 6) in Ling.suffixMap:
+                    return Ling.getSuffix_(str, 6)
+                else:
+                    if Ling.getSuffix_(str, 5) in Ling.suffixMap:
+                        return Ling.getSuffix_(str, 5)
+                    else:
+                        if Ling.getSuffix_(str, 4) in Ling.suffixMap:
+                            return Ling.getSuffix_(str, 4)
+                        else:
+                            if Ling.getSuffix_(str, 3) in Ling.suffixMap:
+                                return Ling.getSuffix_(str, 3)
+                            else:
+                                if Ling.getSuffix_(str, 2) in Ling.suffixMap:
+                                    return Ling.getSuffix_(str, 2)
+                                else:
+                                    return u""
+
+    @classmethod
+    def getSuffixMap(self):
+
+        return Ling.suffixMap
+
+
+    @classmethod
+    def getPrefix_(self, str, len_):
+        if len(str) < len_:
+            return u""
+
+        return str[0 : len_]
+
+    @classmethod
+    def getPrefix(self, str):
+        if Ling.getPrefix_(str, 5) in Ling.prefixMap:
+            return Ling.getPrefix_(str, 5)
+        else:
+            if Ling.getPrefix_(str, 4) in Ling.prefixMap:
+                return Ling.getPrefix_(str, 4)
+            else:
+                if Ling.getPrefix_(str, 3) in Ling.prefixMap:
+                    return Ling.getPrefix_(str, 3)
+                else:
+                    return u""
+
+    @classmethod
+    def getPrefixMap(self):
+        return Ling.prefixMap
+
+    @classmethod
+    def getAffixMap(self):
+        return Ling.affixMap
+
+
+    @classmethod
+    def getMatchingTokensCount(self, phrase1, phrase2):
+        tokens = re.split(ur"\s+", phrase1)
+
+        temp = list()
+        temp1 = re.split(ur"\s+", phrase2)
+        for t in tokens:
+            if t in temp1:
+                temp.append(t)
+        tokens = temp
+
+        temp = list()
+        for t in tokens:
+            if t in Ling.stopwords:
+                continue
+            temp.append(t)
+        tokens = temp
+
+        return 0 if len(tokens) == 0 else len(tokens)
+
+
+
+
+
+
+
 class Terminology:
 
     def __init__(self):
@@ -339,6 +484,22 @@ class Terminology:
         self.tokenToNameListMap = dict()
         self.compoundNameToCuiListMap = dict()
         self.simpleNameToCuiListMap = dict()
+
+    def  getTokenToNameListMap(self):
+        return self.tokenToNameListMap
+
+    def  getSimpleNameToCuiListMap(self):
+        return self.simpleNameToCuiListMap
+
+    def getCuiToNameListMap(self):
+        return self.cuiToNameListMap
+
+    def getCompoundNameToCuiListMap(self):
+        return self.compoundNameToCuiListMap
+
+
+    def getStemmedNameToCuiListMap(self):
+        return self.stemmedNameToCuiListMap
 
     def getNameToCuiListMap(self):
 
@@ -489,6 +650,8 @@ class Concept:
         self.cui = None
         self.alternateCuis = None
         self.normalizingSieveLevel = None
+        self.namesKnowledgeBase = list()
+        self.stemmedNamesKnowledgeBase = list()
 
     def setNameExpansion(self, text, abbreviationObject):
         self.nameExpansion = Abbreviation.getAbbreviationExpansion(abbreviationObject, text, self.name, self.indexes)
@@ -527,7 +690,24 @@ class Concept:
     def getAlternateCuis(self):
         return self.alternateCuis
 
+    def getNameExpansion(self):
+        return self.nameExpansion
 
+    def setNamesKnowledgeBase(self, name):
+        if isinstance(name, list):
+            self.namesKnowledgeBase = Util.addUnique(self.namesKnowledgeBase, name)
+        else:
+            self.namesKnowledgeBase = Util.setList(self.namesKnowledgeBase, name)
+
+    def getNamesKnowledgeBase(self):
+        return self.namesKnowledgeBase
+
+
+    def getStemmedNamesKnowledgeBase(self):
+        return self.stemmedNamesKnowledgeBase
+
+    def setStemmedNamesKnowledgeBase(self, namesList):
+        self.stemmedNamesKnowledgeBase = Util.addUnique(self.stemmedNamesKnowledgeBase, namesList)
 
 
 
@@ -725,6 +905,67 @@ class MultiPassSieveNormalizer:
         if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
             return
 
+        # Sieve 2
+        concept.setCui(Sieve.exactMatchSieve(concept.getNameExpansion()))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 3
+        concept.setCui(PrepositionalTransformSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 4
+        concept.setCui(SymbolReplacementSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 5
+        concept.setCui(HyphenationSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 6
+        concept.setCui(AffixationSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 7
+        concept.setCui(DiseaseModifierSynonymsSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 8
+        concept.setCui(StemmingSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 9
+        concept.setCui(CompoundPhraseSieve.applyNCBI(concept.getName()))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 10
+        concept.setCui(SimpleNameSieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+        # Sieve 11
+        concept.setCui(PartialMatchNCBISieve.apply(concept))
+        currentSieveLevel += 1
+        if not MultiPassSieveNormalizer.pass_(concept, currentSieveLevel):
+            return
+
+
 
 class Sieve:
     standardTerminology = Terminology()
@@ -769,8 +1010,515 @@ class Sieve:
     def getTrainingDataTerminology(self):
         return Sieve.trainingDataTerminology
 
+    @classmethod
+    def normalize(self, namesKnowledgeBase):
+        for name in namesKnowledgeBase :
+            cui = Sieve.exactMatchSieve(name)
+            if cui != u"":
+                return cui
+
+        return u""
+
+    @classmethod
+    def getStandardTerminology(self):
+        return Sieve.standardTerminology
+
+
+class PrepositionalTransformSieve(Sieve):
+
+    @classmethod
+    def apply(self, concept):
+        PrepositionalTransformSieve.init(concept)
+        PrepositionalTransformSieve.transformName(concept)
+        return Sieve.normalize(concept.getNamesKnowledgeBase())
+
+    @classmethod
+    def init(self, concept):
+        concept.setNamesKnowledgeBase(concept.getName())
+        if concept.getNameExpansion() != u"":
+            concept.setNamesKnowledgeBase(concept.getNameExpansion())
+
+    @classmethod
+    def transformName(self, concept):
+        namesForTransformation = list(concept.getNamesKnowledgeBase())
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            prepositionInName = Ling.getStringPreposition(nameForTransformation)
+
+            if prepositionInName != u"":
+                transformedNames = Util.addUnique(transformedNames, PrepositionalTransformSieve.substitutePrepositionsInPhrase(prepositionInName, nameForTransformation))
+                transformedNames = Util.setList(transformedNames, PrepositionalTransformSieve.swapPhrasalSubjectAndObject(prepositionInName, re.split(ur"\s+", nameForTransformation)))
+            else :
+                transformedNames = Util.addUnique(transformedNames, PrepositionalTransformSieve.insertPrepositionsInPhrase(nameForTransformation, re.split(ur"\s+", nameForTransformation)))
+
+        concept.setNamesKnowledgeBase(transformedNames)
+
+    @classmethod
+    def insertPrepositionsInPhrase(self, phrase, phraseTokens):
+
+        newPrepositionalPhrases = list()
+        for preposition in Ling.PREPOSITIONS:
+
+            newPrepositionalPhrase = (Ling.getSubstring(phraseTokens, 1, len(phraseTokens))+u" "+preposition+u" "+phraseTokens[0]).strip()
+            newPrepositionalPhrases = Util.setList(newPrepositionalPhrases, newPrepositionalPhrase)
+
+            newPrepositionalPhrase = (phraseTokens[len(phraseTokens)-1]+u" "+preposition+u" "+Ling.getSubstring(phraseTokens, 0, len(phraseTokens)-1)).strip()
+            newPrepositionalPhrases = Util.setList(newPrepositionalPhrases, newPrepositionalPhrase)
+
+        return newPrepositionalPhrases
+
+
+
+    @classmethod
+    def substitutePrepositionsInPhrase(self, prepositionInPhrase, phrase):
+        newPrepositionalPhrases = list()
+        for preposition in Ling.PREPOSITIONS:
+            if preposition == prepositionInPhrase:
+                continue
+
+            newPrepositionalPhrase = (phrase.replace(u" " + prepositionInPhrase + u" ", u" " + preposition + u" ")).strip()
+            newPrepositionalPhrases = Util.setList(newPrepositionalPhrases, newPrepositionalPhrase)
+
+        return newPrepositionalPhrases
+
+    @classmethod
+    def swapPhrasalSubjectAndObject(self, prepositionInPhrase, phraseTokens) :
+        prepositionTokenIndex = Util.getTokenIndex(phraseTokens, prepositionInPhrase)
+        return  (Ling.getSubstring(phraseTokens, prepositionTokenIndex+1, len(phraseTokens))+u" "+
+                Ling.getSubstring(phraseTokens, 0, prepositionTokenIndex)).strip() if prepositionTokenIndex != -1 else u""
+
+
+class SymbolReplacementSieve(Sieve):
+
+    @classmethod
+    def apply(self, concept):
+        SymbolReplacementSieve.transformName(concept)
+        return Sieve.normalize(concept.getNamesKnowledgeBase())
+
+    @classmethod
+    def transformName(self, concept):
+        namesForTransformation = list(concept.getNamesKnowledgeBase())
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            transformedNames = Util.addUnique(transformedNames, SymbolReplacementSieve.substituteSymbolsInStringWithWords(nameForTransformation))
+            transformedNames = Util.addUnique(transformedNames, SymbolReplacementSieve.substituteWordsInStringWithSymbols(nameForTransformation))
+
+
+        concept.setNamesKnowledgeBase(transformedNames)
+
+    @classmethod
+    def getClinicalReportTypeSubstitutions(self, string):
+        newStrings = list()
+        for digit in Ling.getDigitToWordMap():
+            if string.find(digit) == -1:
+                continue
+            wordsList = Ling.getDigitToWordMap().get(digit)
+            for word in wordsList:
+                newString = string.replace(digit, word)
+                if newString != string:
+                    newStrings = Util.setList(newStrings, newString)
+
+        return newStrings
+
+    @classmethod
+    def getBiomedicalTypeSubstitutions(self, string):
+        if string.find(u"and/or") != -1:
+            string = string.replace(u"and/or", u"and")
+        if string.find(u"/") != -1:
+            string = string.replace(u"/", u" and ")
+        if string.find(u" (") != -1 and string.find(u")") != -1:
+            string = string.replace(u" (", u"").replace(u")", u"")
+        elif string.find(u"(") != -1 and string.find(u")") != -1:
+            string = string.replace(u"(", u"").replace(u")", u"")
+        return string
+
+
+
+    @classmethod
+    def substituteSymbolsInStringWithWords(self, string):
+        newStrings = SymbolReplacementSieve.getClinicalReportTypeSubstitutions(string)
+        tempNewStrings = list()
+        for newString in newStrings:
+            tempNewStrings = Util.setList(tempNewStrings, SymbolReplacementSieve.getBiomedicalTypeSubstitutions(newString))
+        newStrings = Util.addUnique(newStrings, tempNewStrings)
+        newStrings = Util.setList(newStrings, SymbolReplacementSieve.getBiomedicalTypeSubstitutions(string))
+        return newStrings
+
+    @classmethod
+    def substituteWordsInStringWithSymbols(self, string):
+        newStrings = list()
+        for word in Ling.getWordToDigitMap():
+            if string.find(word) == -1:
+                continue
+            digit = Ling.getWordToDigitMap().get(word)
+            newString = string.replace(word, digit)
+            if newString != string:
+                newStrings = Util.setList(newStrings, newString)
+
+        return newStrings
+
+
+class HyphenationSieve(Sieve):
+    @classmethod
+    def apply(self, concept):
+        HyphenationSieve.transformName(concept)
+        return Sieve.normalize(concept.getNamesKnowledgeBase())
+
+    @classmethod
+    def transformName(self, concept):
+        namesForTransformation = list(concept.getNamesKnowledgeBase())
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            transformedNames = Util.addUnique(transformedNames, HyphenationSieve.hyphenateString(re.split(ur"\s+", nameForTransformation)))
+            transformedNames = Util.addUnique(transformedNames, HyphenationSieve.dehyphenateString(re.split(ur"\-", nameForTransformation)))
+
+
+        concept.setNamesKnowledgeBase(transformedNames)
+
+    @classmethod
+    def hyphenateString(self, stringTokens):
+        hyphenatedStrings = list()
+        i = 1
+        while i < len(stringTokens):
+            hyphenatedString = u""
+            j = 0
+            while j < len(stringTokens):
+                if j == i:
+                    hyphenatedString += u"-"+stringTokens[j]
+                else:
+                    hyphenatedString = stringTokens[j] if hyphenatedString == u"" else hyphenatedString+u" "+stringTokens[j]
+                j += 1
+
+            hyphenatedStrings = Util.setList(hyphenatedStrings, hyphenatedString)
+            i += 1
+        return hyphenatedStrings
+
+    @classmethod
+    def dehyphenateString(self, stringTokens):
+        dehyphenatedStrings = list()
+        i = 1
+        while i < len(stringTokens):
+
+            dehyphenatedString = u""
+            j = 0
+            while j < len(stringTokens):
+                if j == i:
+                    dehyphenatedString += u" "+stringTokens[j]
+                else:
+                    dehyphenatedString = stringTokens[j] if dehyphenatedString == u"" else dehyphenatedString+u"-"+stringTokens[j]
+                j += 1
+
+            dehyphenatedStrings = Util.setList(dehyphenatedStrings, dehyphenatedString)
+            i += 1
+
+        return dehyphenatedStrings
+
+class AffixationSieve(Sieve):
+
+    @classmethod
+    def apply(self, concept):
+        AffixationSieve.transformName(concept)
+        return Sieve.normalize(concept.getNamesKnowledgeBase())
+
+    @classmethod
+    def transformName(self, concept):
+        namesForTransformation = list(concept.getNamesKnowledgeBase())
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            transformedNames = Util.addUnique(transformedNames, AffixationSieve.affix(nameForTransformation))
+
+
+        concept.setNamesKnowledgeBase(transformedNames);
+
+    @classmethod
+    def getAllStringTokenSuffixationCombinations(self, stringTokens):
+        suffixatedPhrases = list()
+        for stringToken in stringTokens:
+            suffix = Ling.getSuffix(stringToken)
+            forSuffixation = None if suffix == u"" else Ling.getSuffixMap().get(suffix)
+
+            if len(suffixatedPhrases) == 0:
+                if forSuffixation is None:
+                    suffixatedPhrases = Util.setList(suffixatedPhrases, stringToken)
+                elif len(forSuffixation) == 0:
+                    suffixatedPhrases = Util.setList(suffixatedPhrases, stringToken.replace(suffix, u""))
+                else :
+                    i = 0
+                    while i < len(forSuffixation):
+                        suffixatedPhrases = Util.setList(suffixatedPhrases, stringToken.replace(suffix, forSuffixation[i]))
+                        i += 1
+
+            else :
+                if forSuffixation is None:
+                    for i in range(len(suffixatedPhrases)):
+                        suffixatedPhrases[i] = suffixatedPhrases[i]+u" "+stringToken
+
+                elif len(forSuffixation) == 0:
+                    for i in range(len(suffixatedPhrases)):
+                        suffixatedPhrases[i] = suffixatedPhrases[i]+u" "+stringToken.replace(suffix, u"")
+
+                else:
+                    tempSuffixatedPhrases = list()
+                    for i in range(len(suffixatedPhrases)):
+                        suffixatedPhrase = suffixatedPhrases[i]
+                        for j in range(len(forSuffixation)):
+                            tempSuffixatedPhrases = Util.setList(tempSuffixatedPhrases, suffixatedPhrase+u" "+stringToken.replace(suffix, forSuffixation[j]))
+
+                    suffixatedPhrases = list(tempSuffixatedPhrases)
+                    tempSuffixatedPhrases = None
+
+
+        return suffixatedPhrases
+
+    @classmethod
+    def getUniformStringTokenSuffixations(self, stringTokens, string):
+        suffixatedPhrases = list()
+        for stringToken in stringTokens:
+            suffix = Ling.getSuffix(stringToken)
+            forSuffixation = None if suffix == u"" else Ling.getSuffixMap().get(suffix)
+
+            if forSuffixation == None:
+                continue
+
+            if len(forSuffixation) == 0:
+                Util.setList(suffixatedPhrases, string.replace(suffix, u""))
+                continue
+
+            for i in range(len(forSuffixation)):
+                suffixatedPhrases = Util.setList(suffixatedPhrases, string.replace(suffix, forSuffixation[i]))
+
+        return suffixatedPhrases
+
+
+    @classmethod
+    def suffixation(self, stringTokens, string):
+        suffixatedPhrases = AffixationSieve.getAllStringTokenSuffixationCombinations(stringTokens)
+        return Util.addUnique(suffixatedPhrases, AffixationSieve.getUniformStringTokenSuffixations(stringTokens, string))
+
+    @classmethod
+    def prefixation(self, stringTokens, string):
+        prefixatedPhrase = u""
+        for stringToken in stringTokens:
+            prefix = Ling.getPrefix(stringToken)
+            forPrefixation = u"" if prefix == u"" else Ling.getPrefixMap().get(prefix)
+            if prefixatedPhrase == u"":
+                prefixatedPhrase = stringToken if prefix == u"" else stringToken.replace(prefix, forPrefixation)
+            else:
+                prefixatedPhrase = prefixatedPhrase+u" "+stringToken if prefix == u"" else prefixatedPhrase+u" "+stringToken.replace(prefix, forPrefixation)
+
+        return prefixatedPhrase
+
+    @classmethod
+    def affixation(self, stringTokens, string):
+        affixatedPhrase = u""
+        for stringToken in stringTokens:
+            affix = (re.split(ur"\|", Ling.AFFIX)[0] if stringToken.find(re.split(ur"\|",Ling.AFFIX)[0]) != -1 else re.split(ur"\|", Ling.AFFIX)[1]) \
+                if re.match(ur".*("+Ling.AFFIX+ur").*", stringToken) else u""
+            forAffixation = u"" if affix == u"" else Ling.getAffixMap().get(affix)
+            if affixatedPhrase == u"":
+                affixatedPhrase = stringToken if affix == u"" else stringToken.replace(affix, forAffixation)
+            else:
+                affixatedPhrase = affixatedPhrase+u" "+stringToken if affix == u"" else affixatedPhrase+u" "+stringToken.replace(affix, forAffixation)
+
+        return affixatedPhrase
+
+    @classmethod
+    def affix(self, string):
+        stringTokens = re.split(ur"\s", string)
+        newPhrases = AffixationSieve.suffixation(stringTokens, string)
+        newPhrases = Util.setList(newPhrases, AffixationSieve.prefixation(stringTokens, string))
+        newPhrases = Util.setList(newPhrases, AffixationSieve.affixation(stringTokens, string))
+        return newPhrases
+
+
+class DiseaseModifierSynonymsSieve(Sieve):
+
+    @classmethod
+    def apply(self, concept):
+        if concept.getName() not in Ling.PLURAL_DISORDER_SYNONYMS and concept.getName() not in Ling.SINGULAR_DISORDER_SYNONYMS:
+            DiseaseModifierSynonymsSieve.transformName(concept)
+            return Sieve.normalize(concept.getNamesKnowledgeBase())
+
+        return u""
+
+    @classmethod
+    def transformName(self, concept):
+        namesForTransformation = list(concept.getNamesKnowledgeBase())
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            nameForTransformationTokens = re.split(ur"\s+", nameForTransformation)
+            modifier = DiseaseModifierSynonymsSieve.getModifier(nameForTransformationTokens, Ling.PLURAL_DISORDER_SYNONYMS)
+            if modifier != u"":
+                transformedNames = Util.addUnique(transformedNames, DiseaseModifierSynonymsSieve.substituteDiseaseModifierWithSynonyms(nameForTransformation, modifier, Ling.PLURAL_DISORDER_SYNONYMS))
+                transformedNames = Util.setList(transformedNames, DiseaseModifierSynonymsSieve.deleteTailModifier(nameForTransformationTokens, modifier))
+                continue
+
+
+            modifier = DiseaseModifierSynonymsSieve.getModifier(nameForTransformationTokens, Ling.SINGULAR_DISORDER_SYNONYMS)
+            if modifier != u"":
+                transformedNames = Util.addUnique(transformedNames, DiseaseModifierSynonymsSieve.substituteDiseaseModifierWithSynonyms(nameForTransformation, modifier, Ling.SINGULAR_DISORDER_SYNONYMS))
+                transformedNames = Util.setList(transformedNames, DiseaseModifierSynonymsSieve.deleteTailModifier(nameForTransformationTokens, modifier))
+                continue
+
+            transformedNames = Util.addUnique(transformedNames, DiseaseModifierSynonymsSieve.appendModifier(nameForTransformation, Ling.SINGULAR_DISORDER_SYNONYMS))
+
+
+        concept.setNamesKnowledgeBase(transformedNames);
+
+    @classmethod
+    def substituteDiseaseModifierWithSynonyms(self, string, toReplaceWord, synonyms):
+        newPhrases = list()
+        for synonym in synonyms:
+            if toReplaceWord == synonym:
+                continue
+            newPhrase = string.replace(toReplaceWord, synonym)
+            newPhrases = Util.setList(newPhrases, newPhrase)
+
+        return newPhrases
+
+    @classmethod
+    def deleteTailModifier(self, stringTokens, modifier):
+        return Ling.getSubstring(stringTokens, 0, len(stringTokens) - 1) if stringTokens[len(stringTokens) - 1] == modifier else u""
+
+    @classmethod
+    def appendModifier(self, string, modifiers):
+        newPhrases = list()
+        for modifier in modifiers:
+            newPhrase = string + u" " + modifier
+            newPhrases = Util.setList(newPhrases, newPhrase)
+
+        return newPhrases
+
+
+    @classmethod
+    def getModifier(self, stringTokens, modifiers):
+        for modifier in modifiers:
+            index = Util.getTokenIndex(stringTokens, modifier)
+            if index != -1:
+                return stringTokens[index]
+
+        return u""
+
+
+class StemmingSieve(Sieve):
+    @classmethod
+    def apply(self, concept):
+        StemmingSieve.transformName(concept)
+        return StemmingSieve.normalize(concept)
+
+    @classmethod
+    def transformName(self, concept):
+        namesForTransformation = list(concept.getNamesKnowledgeBase())
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            transformedNames = Util.setList(transformedNames, Ling.getStemmedPhrase(nameForTransformation))
+
+
+        concept.setStemmedNamesKnowledgeBase(transformedNames)
+
+    @classmethod
+    def normalize(self, concept):
+        for name in concept.getStemmedNamesKnowledgeBase():
+            cui = StemmingSieve.exactMatchSieve(name)
+            if cui != u"":
+                return cui
+
+        return u""
+
+    @classmethod
+    def exactMatchSieve(self, name):
+        cui = u""
+
+        # checks against names in training data
+        cui = Sieve.getTerminologyNameCui(Sieve.getTrainingDataTerminology().getStemmedNameToCuiListMap(), name)
+        if cui != u"":
+            return cui
+
+        # checks against names in dictionary
+        cui = Sieve.getTerminologyNameCui(Sieve.getStandardTerminology().getStemmedNameToCuiListMap(), name)
+        return cui
+
+
+class CompoundPhraseSieve(Sieve):
+
+    @classmethod
+    def applyNCBI(self, name):
+        cui = CompoundPhraseSieve.apply(name)
+        if cui != u"" or (name.find(u" and ") == -1 and name.find(u" or ") == -1):
+            return cui
+
+        compoundWord = u"and" if name.find(u" and ") else u"or"
+        nameTokens = re.split(ur"\s+", name)
+        index = Util.getTokenIndex(nameTokens, compoundWord)
+
+        if index == 1:
+            replacement1 = nameTokens[0]
+            replacement2 = nameTokens[2]+u" "+nameTokens[3] if nameTokens[2] == u"the" else nameTokens[2]
+            phrase = replacement1+u" "+compoundWord+u" "+replacement2
+            replacement2 = nameTokens[3] if nameTokens[2] == u"the" else nameTokens[2]
+            cui1 = Sieve.exactMatchSieve(name.replace(phrase, replacement1))
+
+            cui2 = Sieve.exactMatchSieve(name.replace(phrase, replacement2))
+            if cui1 != u"" and cui2 != u"":
+                return cui2+u"|"+cui1 if cui2+u"|"+cui1 in Sieve.getTrainingDataTerminology().getCuiToNameListMap() else cui1+u"|"+cui2
+
+
+        return u""
+
+    @classmethod
+    def apply(self, name):
+        cui = Sieve.getTerminologyNameCui(Sieve.getTrainingDataTerminology().getCompoundNameToCuiListMap(), name)
+        if cui != u"":
+            return cui
+
+        return Sieve.getTerminologyNameCui(Sieve.getStandardTerminology().getCompoundNameToCuiListMap(), name)
+
+
 
 class SimpleNameSieve(Sieve):
+
+    @classmethod
+    def apply(self, concept):
+        namesForTransformation = SimpleNameSieve.getNamesForTransformation(concept)
+        namesKnowledgeBase = SimpleNameSieve.transformName(namesForTransformation)
+        cui = Sieve.normalize(namesKnowledgeBase)
+        return SimpleNameSieve.normalize(concept.getName()) if cui == u"" else cui
+
+    @classmethod
+    def getNamesForTransformation(self, concept):
+        namesForTransformation = list()
+        namesForTransformation.append(concept.getName())
+        if concept.getNameExpansion() != u"":
+            namesForTransformation.append(concept.getNameExpansion())
+        return namesForTransformation
+
+    @classmethod
+    def transformName(self, namesForTransformation):
+        transformedNames = list()
+
+        for nameForTransformation in namesForTransformation:
+            transformedNames = Util.addUnique(transformedNames, SimpleNameSieve.deletePhrasalModifier(nameForTransformation, re.split(ur"\s", nameForTransformation)))
+
+
+        return transformedNames
+
+    @classmethod
+    def deletePhrasalModifier(self, phrase, phraseTokens):
+        newPhrases = list()
+        if len(phraseTokens) > 3:
+            newPhrase = Ling.getSubstring(phraseTokens, 0, len(phraseTokens)-2)+u" "+phraseTokens[len(phraseTokens)-1]
+            newPhrases = Util.setList(newPhrases, newPhrase)
+            newPhrase = Ling.getSubstring(phraseTokens, 1, len(phraseTokens))
+            newPhrases = Util.setList(newPhrases, newPhrase)
+
+        return newPhrases
+
 
     @classmethod
     def getTerminologySimpleNames(self, phraseTokens):
@@ -783,6 +1531,119 @@ class SimpleNameSieve(Sieve):
 
         return newPhrases
 
+    @classmethod
+    def normalize(self, name):
+        return Sieve.getTerminologyNameCui(Sieve.getTrainingDataTerminology().getSimpleNameToCuiListMap(), name)
+
+
+class PartialMatchNCBISieve:
+    @classmethod
+    def apply(self, concept):
+        name = concept.getName()
+        nameTokens = re.split(ur"\s+", name)
+        return PartialMatchNCBISieve.partialMatch(name, nameTokens)
+
+    @classmethod
+    def partialMatch(self, phrase, phraseTokens):
+        partialMatchedPhrases = list()
+        candidateCuiDataMap = PartialMatchNCBISieve.init()
+
+        for phraseToken in phraseTokens:
+            if phraseToken in Ling.getStopwordsList():
+                continue
+            candidatePhrases = None
+            map = -1
+
+            if phraseToken in Sieve.getTrainingDataTerminology().getTokenToNameListMap():
+                candidatePhrases = list(Sieve.getTrainingDataTerminology().getTokenToNameListMap().get(phraseToken))
+                map = 2
+
+            elif phraseToken in Sieve.getStandardTerminology().getTokenToNameListMap():
+                candidatePhrases = list(Sieve.getStandardTerminology().getTokenToNameListMap().get(phraseToken))
+                map = 3
+
+
+            if candidatePhrases is None:
+                continue
+
+            temp = list()
+            for t in candidatePhrases:
+                if t in partialMatchedPhrases:
+                    continue
+                temp.append(t)
+            candidatePhrases = temp
+
+            candidateCuiDataMap = PartialMatchNCBISieve.ncbiPartialMatch(phrase, candidatePhrases, partialMatchedPhrases, Sieve.getTrainingDataTerminology() if map == 2 else Sieve.getStandardTerminology(), candidateCuiDataMap)
+
+        return PartialMatchNCBISieve.getCui(candidateCuiDataMap.get(1), candidateCuiDataMap.get(2)) if len(candidateCuiDataMap.get(1)) != 0 else u""
+
+    @classmethod
+    def init(self):
+        candidateCuiDataMap = dict()
+        candidateCuiDataMap[1] = dict()
+        candidateCuiDataMap[2] = dict()
+        return candidateCuiDataMap
+
+    @classmethod
+    def ncbiPartialMatch(self, phrase, candidatePhrases, partialMatchedPhrases, terminology, cuiCandidateDataMap):
+        cuiCandidateMatchingTokensCountMap = cuiCandidateDataMap.get(1)
+        cuiCandidateLengthMap = cuiCandidateDataMap.get(2)
+
+        for candidatePhrase in candidatePhrases:
+            partialMatchedPhrases = Util.setList(partialMatchedPhrases, candidatePhrase)
+
+            count = Ling.getMatchingTokensCount(phrase, candidatePhrase)
+            length = len(re.split(ur"\s+", candidatePhrase))
+            cui = terminology.getNameToCuiListMap().get(candidatePhrase)[0]
+
+            if cui in cuiCandidateMatchingTokensCountMap:
+                oldCount = cuiCandidateMatchingTokensCountMap.get(cui)
+                if oldCount < count:
+                    cuiCandidateMatchingTokensCountMap[cui] =  count
+                    cuiCandidateLengthMap[cui] = length
+
+                continue
+
+
+            cuiCandidateMatchingTokensCountMap[cui] = count
+            cuiCandidateLengthMap[cui] = length
+
+
+        cuiCandidateDataMap[1] = cuiCandidateMatchingTokensCountMap
+        cuiCandidateDataMap[2] = cuiCandidateLengthMap
+        return cuiCandidateDataMap
+
+    @classmethod
+    def getCui(self, cuiCandidateMatchedTokensCountMap, cuiCandidateLengthMap):
+        cui = u""
+        maxMatchedTokensCount = -1
+        matchedTokensCountCuiListMap = dict()
+        for candidateCui in cuiCandidateMatchedTokensCountMap:
+            matchedTokensCount = cuiCandidateMatchedTokensCountMap.get(candidateCui)
+            if matchedTokensCount >= maxMatchedTokensCount:
+                maxMatchedTokensCount = matchedTokensCount
+
+                cuiList = matchedTokensCountCuiListMap.get(matchedTokensCount)
+                if cuiList is None:
+                    cuiList = list()
+                    matchedTokensCountCuiListMap[matchedTokensCount] = cuiList
+                cuiList = Util.setList(cuiList, candidateCui)
+
+
+        candidateCuiList = matchedTokensCountCuiListMap.get(maxMatchedTokensCount)
+        if len(candidateCuiList) == 1:
+            return candidateCuiList[0]
+        else :
+            minCandidateLength = 1000
+            for candidateCui in candidateCuiList:
+                length = cuiCandidateLengthMap.get(candidateCui)
+                if length < minCandidateLength:
+                    minCandidateLength = length
+                    cui = candidateCui
+
+
+
+        return cui
 
 
 def makedir_and_clear(dir_path):
