@@ -31,11 +31,11 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
         batch_size = len(input_batch_list)
         words = [sent[0] for sent in input_batch_list]
         chars = [sent[1] for sent in input_batch_list]
-        if len(sent) > 2:
+        if len(input_batch_list[0]) > 2:
             labels = [sent[2] for sent in input_batch_list]
         else:
             labels = None
-        word_seq_lengths = torch.LongTensor(map(len, words))
+        word_seq_lengths = torch.LongTensor(list(map(len, words)))
         # max_seq_len = word_seq_lengths.max()
         # word_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len))).long()
         # label_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len))).long()
@@ -64,8 +64,8 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
         ### deal with char
         # pad_chars (batch_size, max_seq_len)
         pad_chars = [chars[idx] + [[0]] * (max_seq_len-len(chars[idx])) for idx in range(len(chars))]
-        length_list = [map(len, pad_char) for pad_char in pad_chars]
-        max_word_len = max(map(max, length_list))
+        length_list = [list(map(len, pad_char)) for pad_char in pad_chars]
+        max_word_len = max(list(map(max, length_list)))
         char_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len, max_word_len), dtype=torch.long))
         char_seq_lengths = torch.LongTensor(length_list)
         for idx, (seq, seqlen) in enumerate(zip(pad_chars, char_seq_lengths)):

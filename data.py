@@ -1,7 +1,7 @@
 import codecs
 from alphabet import Alphabet
 import numpy as np
-import cPickle as pickle
+import pickle as pk
 from os import listdir
 from os.path import isfile, join
 from my_utils import get_bioc_file, get_text_file, normalize_word
@@ -204,7 +204,8 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
                 continue
             entity_ = Entity()
             if isinstance(entity.text, str):
-                text = entity.text.decode('utf-8')
+                # text = entity.text.decode('utf-8')
+                text = entity.text
             else: # unicode
                 text = entity.text
             entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
@@ -270,7 +271,7 @@ def loadData(basedir):
     for fileName in annotation_files:
         try:
             document = processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool)
-        except Exception, e:
+        except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             continue
 
@@ -534,13 +535,13 @@ class Data:
 
     def load(self,data_file):
         f = open(data_file, 'rb')
-        tmp_dict = pickle.load(f)
+        tmp_dict = pk.load(f)
         f.close()
         self.__dict__.update(tmp_dict)
 
     def save(self,save_file):
         f = open(save_file, 'wb')
-        pickle.dump(self.__dict__, f, 2)
+        pk.dump(self.__dict__, f, 2)
         f.close()
 
 

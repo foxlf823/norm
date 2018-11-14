@@ -142,7 +142,7 @@ def test(data, opt):
             logging.info("process %s complete with %.2fs" % (fileName, end - start))
 
             ct_success += 1
-        except Exception, e:
+        except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             ct_error += 1
 

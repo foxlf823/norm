@@ -205,8 +205,8 @@ def readTwoLabelSentence(input_file, pred_col=-1):
 
 
 def fmeasure_from_file(golden_file, predict_file, label_type="BMES"):
-    print "Get f measure from file:", golden_file, predict_file
-    print "Label format:",label_type
+    print("Get f measure from file: {} {}".format(golden_file, predict_file))
+    print("Label format: {}".format(label_type))
     golden_sent,golden_labels = readSentence(golden_file)
     predict_sent,predict_labels = readSentence(predict_file)
     P,R,F = get_ner_fmeasure(golden_labels, predict_labels, label_type)
