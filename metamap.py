@@ -25,7 +25,7 @@ def apply_metamap_to(input_dir, output_dir):
         # os.system('/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(input_file_path, output_file_path))
 
 def load_metamap_result_from_file(file_path):
-    re_brackets = re.compile(ur'\[[0-9|/]+\]')
+    re_brackets = re.compile(r'\[[0-9|/]+\]')
     document = Document()
     entities = []
     with codecs.open(file_path, 'r', 'UTF-8') as fp:
