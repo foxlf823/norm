@@ -13,6 +13,8 @@ import re
 import nltk
 from my_corenlp_wrapper import StanfordCoreNLP
 import json
+import xml.sax
+import fda_xml_handler
 
 def getLabel(start, end, entities):
     match = ""
@@ -37,6 +39,114 @@ def getLabel(start, end, entities):
             return match+"-"+entity.type
     else:
         return "O"
+
+def getLabel_BIOHD1234(sent, tokenIdx, entities, ignore_regions, section_id):
+    # if token occur in ignored regions, its label should be 'O'
+
+    for ignore_region in ignore_regions:
+        if ignore_region.section != section_id:
+            continue
+        if sent[tokenIdx][1] >= ignore_region.start and sent[tokenIdx][2] <= ignore_region.end:
+            return 'O'
+
+    # count the number that tok occurs in spans
+
+    spansContainTok = [] # [[start, end]]
+    entityContainSpan = []
+    for entity in entities:
+        for span in entity.spans:
+            if sent[tokenIdx][1] >= span[0] and sent[tokenIdx][2] <= span[1]:
+                spansContainTok.append(span)
+                entityContainSpan.append(entity)
+
+    if len(spansContainTok) == 0:
+        return 'O'
+    elif len(spansContainTok) > 1: # (DB DI {HB HI) DB DI}
+        for span in spansContainTok:
+            if sent[tokenIdx][1] == span[0]:
+                return 'HB-X'
+            else :
+                return 'HI-X'
+    else:
+        currentSpan = spansContainTok[0]
+        currentEntity = entityContainSpan[0]
+        overlapped = False
+        overlappedSpan = None
+
+        for entity in entities:
+            for span in entity.spans:
+                if currentSpan[0] == span[0] and currentSpan[1] == span[1]:
+                    continue
+
+                if (currentSpan[1] >= span[0] and currentSpan[0] <= span[1]) :
+                    overlapped = True
+                    overlappedSpan = span
+                    break
+
+        if overlapped: # (DB DI {HB HI) DB DI}
+            i = 0
+            while i<len(sent):
+                if (sent[i][1] >= overlappedSpan[1]):
+                    break
+                i += 1
+
+            if (sent[tokenIdx][1] == currentSpan[0]):
+                return 'D3B-X'
+            elif i == tokenIdx:
+                return 'D1B-X'
+            else:
+                if sent[i][1] < overlappedSpan[0]:
+                    return 'D3I-X'
+                else:
+                    return 'D1I-X'
+        else:
+            if len(currentEntity.spans) > 1: # (DB DI)  (DB DI)
+                otherSpan = None
+                for span in currentEntity.spans:
+                    if (currentSpan[0] == span[0] and currentSpan[1] == span[1]):
+                        continue
+
+                    otherSpan = span # assume only one other discontinuous span
+                    break
+
+                coutOtherSpan = 0
+                for entity in entities:
+                    for span in entity.spans:
+                        # if (otherSpan[0] == span[0] and otherSpan[1] == span[1]):
+                        if otherSpan[0] >= span[0] and otherSpan[1] <= span[1]:
+                            coutOtherSpan += 1
+
+                if (coutOtherSpan > 1):
+                    if (currentSpan[0] < otherSpan[0]):
+                        if (sent[tokenIdx][1] == currentSpan[0]):
+                            return 'D3B-X'
+                        else:
+                            return 'D3I-X'
+                    else:
+                        if (sent[tokenIdx][1] == currentSpan[0]):
+                            return 'D1B-X'
+                        else:
+                            return 'D1I-X'
+                else:
+                    if currentSpan[0] < otherSpan[0]:
+                        if (sent[tokenIdx][1] == currentSpan[0]):
+                            return 'D4B-X'
+                        else:
+                            return 'D4I-X'
+                    else:
+                        if (sent[tokenIdx][1] == currentSpan[0]):
+                            return 'D2B-X'
+                        else:
+                            return 'D2I-X'
+
+            else:
+                if (sent[tokenIdx][1] == currentSpan[0]) : # (B I)
+                    return 'B-X'
+                else:
+                    return 'I-X'
+
+
+
 
 def get_start_and_end_offset_of_token_from_spacy(token):
     start = token.idx
@@ -117,7 +227,7 @@ def text_tokenize_and_postagging(txt, sent_start):
 def token_from_sent(txt, sent_start):
     return [token for token in text_tokenize_and_postagging(txt, sent_start)]
 
-def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities):
+def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities, ignore_regions, section_id):
     all_sents_inds = []
     generator = nlp_tool.span_tokenize(text)
     for t in generator:
@@ -127,9 +237,10 @@ def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities):
     for ind in range(len(all_sents_inds)):
         t_start = all_sents_inds[ind][0]
         t_end = all_sents_inds[ind][1]
+
         tmp_tokens = token_from_sent(text[t_start:t_end], t_start)
         sentence_tokens = []
-        for token in tmp_tokens:
+        for token_idx, token in enumerate(tmp_tokens):
             token_dict = {}
             token_dict['start'], token_dict['end'] = token[1], token[2]
             token_dict['text'] = token[0]
@@ -143,10 +254,24 @@ def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities):
 
             # get label
             if entities is not None:
-                token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
+                if opt.schema == 'BMES':
+                    token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
+                elif opt.schema == 'BIOHD_1234':
+                    token_dict['label'] = getLabel_BIOHD1234(tmp_tokens, token_idx, entities, ignore_regions, section_id)
+                else:
+                    raise RuntimeError("invalid label schema")
 
             sentence_tokens.append(token_dict)
-        sentences.append(sentence_tokens)
+
+        # debug feili
+        has_HBorDB = False
+        for token_dict in sentence_tokens:
+            if token_dict['label'] in set(['HB-X', 'D1B-X', 'D2B-X', 'D3B-X', 'D4B-X']):
+                has_HBorDB = True
+                break
+
+        if has_HBorDB:
+            sentences.append(sentence_tokens)
     return sentences
 
 def get_stanford_annotations(text, core_nlp, port=9000, annotators='tokenize,ssplit,pos,lemma'):
@@ -245,6 +370,48 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
 
     return document
 
+def get_fda_file(file_path):
+    handler = fda_xml_handler.FdaXmlHandler()
+    xml.sax.parse(file_path, handler)
+    return handler
+
+
+
+def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining):
+    documents = []
+    annotation_file = get_fda_file(join(annotation_dir, fileName))
+
+    # each section is a document
+    for section in annotation_file.sections:
+        document = Document()
+        document.name = fileName[:fileName.find('.')]+"_"+section.id
+
+        entities = []
+
+        for entity in annotation_file.mentions:
+            if entity.section != section.id:
+                continue
+            if opt.types and (entity.type not in opt.type_filter):
+                continue
+            entities.append(entity)
+
+        document.entities = entities
+
+        if opt.nlp_tool == "nltk":
+            if isTraining:
+                sentences = get_sentences_and_tokens_from_nltk(section.text, nlp_tool, document.entities, annotation_file.ignore_regions, section.id)
+            else:
+                sentences = get_sentences_and_tokens_from_nltk(section.text, nlp_tool, None, annotation_file.ignore_regions, section.id)
+        else:
+            raise RuntimeError("invalid nlp tool")
+
+
+        document.sentences = sentences
+
+        documents.append(document)
+
+    return documents
+
 
 
 def loadData(basedir):
@@ -280,6 +447,49 @@ def loadData(basedir):
         count_entity_mention += len(document.entities)
 
     logging.info("{} entities in {}".format(count_entity_mention, basedir))
+
+    return documents
+
+def load_data_fda(basedir, isTraining):
+
+    # spacy, nltk, stanford
+    if opt.nlp_tool == "spacy":
+        nlp_tool = spacy.load('en')
+    elif opt.nlp_tool == "nltk":
+        nlp_tool = nltk.data.load('tokenizers/punkt/english.pickle')
+    elif opt.nlp_tool == "stanford":
+        nlp_tool = StanfordCoreNLP('http://localhost:{0}'.format(9000))
+    else:
+        raise RuntimeError("invalid nlp tool")
+
+    documents = []
+
+    count_document = 0
+    count_section = 0
+    count_sentence = 0
+    count_entity = 0
+
+    annotation_files = [f for f in listdir(basedir) if f.find('.xml')!=-1]
+    for fileName in annotation_files:
+        try:
+            document = processOneFile_fda(fileName, basedir, nlp_tool, isTraining)
+        except Exception as e:
+            logging.error("process file {} error: {}".format(fileName, e))
+            continue
+
+        documents.extend(document)
+
+        # statistics
+        count_document += 1
+        for d in document:
+            count_section += 1
+            count_sentence += len(d.sentences)
+            count_entity += len(d.entities)
+
+    logging.info("document number: {}".format(count_document))
+    logging.info("section number: {}".format(count_section))
+    logging.info("sentence number: {}".format(count_sentence))
+    logging.info("entity number {}".format(count_entity))
 
     return documents
 

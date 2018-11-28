@@ -64,7 +64,7 @@ def train(data, opt):
         logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
 
         if f > best_dev:
-            logging.info("Exceed previous best f score on dev: ".format(best_dev))
+            logging.info("Exceed previous best f score on dev: %.4f" % (best_dev))
 
             torch.save(model.state_dict(), os.path.join(opt.output, "model.pkl"))
             best_dev = f

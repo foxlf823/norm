@@ -3,6 +3,7 @@ import numpy as np
 import math
 import sys
 import os
+from data_structure import Entity
 
 
 
@@ -25,6 +26,9 @@ def get_ner_fmeasure(golden_lists, predict_lists, label_type="BMES"):
         if label_type == "BMES":
             gold_matrix = get_ner_BMES(golden_list)
             pred_matrix = get_ner_BMES(predict_list)
+        elif label_type == 'BIOHD_1234':
+            gold_matrix = get_ner_BIOHD_1234(golden_list)
+            pred_matrix = get_ner_BIOHD_1234(predict_list)
         else:
             gold_matrix = get_ner_BIO(golden_list)
             pred_matrix = get_ner_BIO(predict_list)
@@ -108,6 +112,269 @@ def get_ner_BMES(label_list):
     # print stand_matrix
     return stand_matrix
 
+def combineTwoEntity(a, b):
+    c = Entity()
+    c.type = a.type
+
+    if (a.tkSpans[0][0] < b.tkSpans[0][0]):
+        if (a.tkSpans[0][1] + 1 == b.tkSpans[0][0]):
+            c.tkSpans.append([a.tkSpans[0][0], b.tkSpans[0][1]]);
+        else:
+            c.tkSpans.append(a.tkSpans[0])
+            c.tkSpans.append(b.tkSpans[0])
+    else:
+        if (b.tkSpans[0][1] + 1 == a.tkSpans[0][0]):
+            c.tkSpans.append([b.tkSpans[0][0], a.tkSpans[0][1]])
+        else:
+            c.tkSpans.append(b.tkSpans[0])
+            c.tkSpans.append(a.tkSpans[0])
+
+    return c
+
+def checkWrongState(labelSequence, size):
+    positionNew = -1
+    positionOther = -1
+
+    currentLabel = labelSequence[size - 1]
+
+    j = size - 2
+    while j >= 0:
+
+        if (currentLabel == 'I-X'):
+            if (positionNew == -1 and labelSequence[j] == 'B-X'):
+                positionNew = j
+            elif positionOther==-1 and labelSequence[j]!= 'I-X' :
+                positionOther = j
+        elif (currentLabel == 'HI-X'):
+            if (positionNew == -1 and labelSequence[j] == 'HB-X') :
+                positionNew = j
+            elif (positionOther == -1 and labelSequence[j] != 'HI-X'):
+                positionOther = j
+        elif (currentLabel == 'D1I-X') :
+            if (positionNew == -1 and labelSequence[j] == 'D1B-X'):
+                positionNew = j
+            elif (positionOther == -1 and labelSequence[j] != 'D1I-X'):
+                positionOther = j
+        elif (currentLabel == 'D2I-X') :
+            if (positionNew == -1 and labelSequence[j] == 'D2B-X'):
+                positionNew = j
+            elif (positionOther == -1 and labelSequence[j] != 'D2I-X'):
+                positionOther = j
+        elif (currentLabel == 'D3I-X') :
+            if (positionNew == -1 and labelSequence[j] == 'D3B-X'):
+                positionNew = j
+            elif (positionOther == -1 and labelSequence[j] != 'D3I-X'):
+                positionOther = j
+        else:
+            if (positionNew == -1 and labelSequence[j] == 'D4B-X'):
+                positionNew = j
+            elif (positionOther == -1 and labelSequence[j] != 'D4I-X'):
+                positionOther = j
+
+        if (positionOther != -1 and positionNew != -1):
+            break
+
+        j -= 1
+
+    if (positionNew == -1):
+        return False
+    elif (positionOther < positionNew):
+        return True
+    else:
+        return False
+
+def get_ner_BIOHD_1234(outputs):
+    entities = []
+    for idx in range(len(outputs)):
+        labelName = outputs[idx]
+
+        if labelName == 'B-X' or labelName == 'HB-X' or labelName == 'D1B-X' or labelName == 'D2B-X' \
+                or labelName == 'D3B-X' or labelName == 'D4B-X':
+            entity = Entity()
+            entity.type = 'X'
+            entity.tkSpans.append([idx, idx])
+            entity.labelSpans.append([labelName])
+            entities.append(entity)
+        elif labelName == 'I-X' or labelName == 'HI-X' or labelName == 'D1I-X' or labelName == 'D2I-X' \
+					or labelName == 'D3I-X' or labelName == 'D4I-X':
+            if checkWrongState(outputs, idx+1) :
+                entity = entities[-1]
+                entity.tkSpans[-1][1] = idx
+                entity.labelSpans[-1].append(labelName)
+
+    # post-processing to rebuild entities
+    postEntities = []
+    HB_HI = []
+    D1B_D1I = []
+    D2B_D2I = []
+    D3B_D3I = []
+    D4B_D4I = []
+
+    for temp in entities:
+        labelSpan = temp.labelSpans[0]
+
+        if labelSpan[0] == 'HB-X':
+            HB_HI.append(temp)
+        elif labelSpan[0]=='D1B-X':
+            D1B_D1I.append(temp)
+        elif (labelSpan[0] == 'D2B-X') :
+            D2B_D2I.append(temp)
+        elif (labelSpan[0] == 'D3B-X') :
+            D3B_D3I.append(temp)
+        elif (labelSpan[0] == 'D4B-X') :
+            D4B_D4I.append(temp)
+        else:
+            postEntities.append(temp)
+
+    if len(HB_HI) != 0:
+        for d1b in D1B_D1I:
+            # combine with the nearest head entity at left
+            target = None
+            for hb in HB_HI:
+                if (hb.tkSpans[0][0] < d1b.tkSpans[0][0]):
+                    target = hb
+                else:
+                    break
+
+            if target is None:
+                pass
+            else:
+                combined = combineTwoEntity(d1b, target)
+                postEntities.append(combined)
+                if len(D1B_D1I) == 1:
+                    postEntities.append(target)
+
+        for d3b in D3B_D3I:
+            # combine with the nearest head entity at right
+            target = None
+            for hb in reversed(HB_HI):
+                if (hb.tkSpans[0][0] > d3b.tkSpans[0][0]):
+                    target = hb
+                else:
+                    break
+
+            if target is None:
+                pass
+            else:
+                combined = combineTwoEntity(d3b, target)
+                postEntities.append(combined)
+                if len(D3B_D3I) == 1:
+                    postEntities.append(target)
+
+    else:
+        for d2b in D2B_D2I:
+
+            # combine with the nearest non-head entity at left
+            target = None
+            for db in D1B_D1I:
+                if (db.tkSpans[0][0] < d2b.tkSpans[0][0]) :
+                    target = db
+                else :
+                    break
+
+            for db in D2B_D2I:
+                if (db.tkSpans[0][0] < d2b.tkSpans[0][0]):
+                    if (target is not None and target.tkSpans[0][0] < db.tkSpans[0][0]):
+                        target = db
+                    else:
+                        target = db
+                else :
+                    break
+
+            for db in D3B_D3I:
+                if (db.tkSpans[0][0] < d2b.tkSpans[0][0]):
+                    if (target is not None and target.tkSpans[0][0] < db.tkSpans[0][0]):
+                        target = db
+                    else:
+                        target = db
+                else :
+                    break
+
+            for db in D4B_D4I:
+                if (db.tkSpans[0][0] < d2b.tkSpans[0][0]):
+                    if (target is not None and target.tkSpans[0][0] < db.tkSpans[0][0]):
+                        target = db
+                    else:
+                        target = db
+                else :
+                    break
+
+            if target is None:
+                pass
+            else:
+                combined = combineTwoEntity(d2b, target)
+                postEntities.append(combined)
+
+        for d4b in D4B_D4I:
+
+            # combine with the nearest non-head entity at right
+            target = None
+            for db in reversed(D1B_D1I):
+                if (db.tkSpans[0][0] > d4b.tkSpans[0][0]) :
+                    target = db
+                else :
+                    break
+
+            for db in reversed(D2B_D2I):
+                if (db.tkSpans[0][0] > d4b.tkSpans[0][0]):
+                    if (target is not None and target.tkSpans[0][0] > db.tkSpans[0][0]):
+                        target = db
+                    else:
+                        target = db
+                else :
+                    break
+
+            for db in reversed(D3B_D3I):
+                if (db.tkSpans[0][0] > d4b.tkSpans[0][0]):
+                    if (target is not None and target.tkSpans[0][0] > db.tkSpans[0][0]):
+                        target = db
+                    else:
+                        target = db
+                else :
+                    break
+
+            for db in reversed(D4B_D4I):
+                if (db.tkSpans[0][0] > d4b.tkSpans[0][0]):
+                    if (target is not None and target.tkSpans[0][0] > db.tkSpans[0][0]):
+                        target = db
+                    else:
+                        target = db
+                else :
+                    break
+
+            if target is None:
+                pass
+            else:
+                combined = combineTwoEntity(d4b, target)
+                postEntities.append(combined)
+
+    # resort by start position and remove the same entity
+    anwserEntities = []
+    for temp in postEntities:
+        isIn = False
+        for anwser in anwserEntities:
+            if anwser.equalsTkSpan(temp):
+                isIn = True
+                break
+
+        if isIn == False:
+            iter = 0
+            for old in anwserEntities:
+                if old.tkSpans[0][0] > temp.tkSpans[0][0]:
+                    break
+                iter += 1
+
+            anwserEntities.insert(iter, temp)
+
+    # transfer Entity class into its str representation
+    strEntities = []
+    for answer in anwserEntities:
+        strEntity = 'X'
+        for tkSpan in answer.tkSpans:
+            strEntity += '['+str(tkSpan[0])+','+str(tkSpan[1])+']'
+        strEntities.append(strEntity)
+
+    return strEntities
 
 def get_ner_BIO(label_list):
     # list_len = len(word_list)

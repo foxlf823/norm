@@ -11,6 +11,7 @@ import torch.autograd as autograd
 import torch.nn as nn
 import codecs
 import logging
+from options import opt
 
 def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     """
@@ -215,7 +216,7 @@ def evaluate(data, opt, model, name, bEval, nbest=0):
     decode_time = time.time() - start_time
     speed = len(instances)/decode_time
     if bEval:
-        acc, p, r, f = get_ner_fmeasure(gold_results, pred_results)
+        acc, p, r, f = get_ner_fmeasure(gold_results, pred_results, opt.schema)
     else:
         acc, p, r, f = None, None, None, None
     # if nbest>0:

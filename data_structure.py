@@ -3,48 +3,79 @@ class Entity:
     def __init__(self):
         self.id = None
         self.type = None
-        self.start = None
-        self.end = None
-        self.text = None
+
+        self.spans = [] # a couple of spans, list (start, end)
+        self.tkSpans = []
+        self.labelSpans = []
+
         self.sent_idx = None
-        self.tf_start = None
-        self.tf_end = None
         self.norm_id = None
 
-    def create(self, id, type, start, end, text, sent_idx, tf_start, tf_end):
-        self.id = id
-        self.type = type
-        self.start = start
-        self.end = end
-        self.text = text
-        self.sent_idx = sent_idx
-        self.tf_start = tf_start
-        self.tf_end = tf_end
+        # for FDA challenge
+        self.section = None
 
-    def append(self, start, end, text, tf_end):
-
-        whitespacetoAdd = start - self.end
-        for _ in range(whitespacetoAdd):
-            self.text += " "
-        self.text += text
-
-        self.end = end
-        self.tf_end = tf_end
-
-    def getlength(self):
-        return self.end-self.start
+    # def create(self, id, type, start, end, text, sent_idx, tf_start, tf_end):
+    #     self.id = id
+    #     self.type = type
+    #     self.start = start
+    #     self.end = end
+    #     self.text = text
+    #     self.sent_idx = sent_idx
+    #     self.tf_start = tf_start
+    #     self.tf_end = tf_end
+    #
+    # def append(self, start, end, text, tf_end):
+    #
+    #     whitespacetoAdd = start - self.end
+    #     for _ in range(whitespacetoAdd):
+    #         self.text += " "
+    #     self.text += text
+    #
+    #     self.end = end
+    #     self.tf_end = tf_end
+    #
+    # def getlength(self):
+    #     return self.end-self.start
 
     def equals(self, other):
-        if self.type == other.type and self.start == other.start and self.end == other.end:
+
+        if self.type == other.type and len(self.spans) == len(other.spans) :
+
+            for i in range(len(self.spans)) :
+
+                if self.spans[i][0] != other.spans[i][0] or self.spans[i][1] != other.spans[i][1]:
+                    return False
+
             return True
         else:
             return False
 
     def equals_span(self, other):
-        if self.start == other.start and self.end == other.end:
+        if len(self.spans) == len(other.spans):
+
+            for i in range(len(self.spans)):
+
+                if self.spans[i][0] != other.spans[i][0] or self.spans[i][1] != other.spans[i][1]:
+                    return False
+
             return True
+
         else:
             return False
+
+    def equalsTkSpan(self, other):
+        if len(self.tkSpans) == len(other.tkSpans):
+
+            for i in range(len(self.tkSpans)):
+
+                if self.tkSpans[i][0] != other.tkSpans[i][0] or self.tkSpans[i][1] != other.tkSpans[i][1]:
+                    return False
+
+            return True
+
+        else:
+            return False
+
 
 
 class Document:
@@ -52,6 +83,21 @@ class Document:
         self.entities = None
         self.sentences = None
         self.name = None
+
+
+# used for FDA challenge
+class Section:
+    def __init__(self):
+        self.id = None
+        self.name = None
+        self.text = None
+
+class IgnoredRegion:
+    def __init__(self):
+        self.name = None
+        self.section = None
+        self.start = None
+        self.end = None
 
 
 

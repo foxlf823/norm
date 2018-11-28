@@ -554,6 +554,85 @@ def dailymed_to_text(dir_path, output_file_path, append):
 
     output_fp.close()
 
+
+class FdaXmlHandler( xml.sax.ContentHandler ):
+
+    def __init__(self, output_fp):
+        self.currentTag = ""
+        self.parentTag = []
+        self.output_fp = output_fp
+
+    def startDocument(self):
+        pass
+
+    def endDocument(self):
+        self.currentTag = ""
+        self.parentTag = []
+
+    def startElement(self, tag, attributes):
+        if self.currentTag != '':
+            self.parentTag.append(self.currentTag)
+
+        self.currentTag = tag
+
+
+    def endElement(self, tag):
+        if len(self.parentTag) != 0:
+            self.currentTag = self.parentTag[-1]
+            self.parentTag.pop()
+        else:
+            self.currentTag = ''
+
+
+    def characters(self, content):
+
+        if self.currentTag == 'Section':
+            if content.strip() == '':
+                return
+
+            if re.search(r'[a-zA-Z]+', content) == None:
+                return
+
+            sentences = nlp_process(content)
+
+            for sent in sentences:
+                has_alpha = False
+                for token in sent:
+                    if re.search(r'[a-zA-Z]+', token) != None:
+                        has_alpha = True
+                        break
+
+                if has_alpha == False:
+                    continue
+
+                for token in sent:
+                    self.output_fp.write(token + ' ')
+                self.output_fp.write('\n')
+
+def tac2017_to_text(dir_path, output_file_path, append):
+    if append:
+        output_fp = codecs.open(output_file_path, 'a', 'UTF-8')
+    else:
+        output_fp = codecs.open(output_file_path, 'w', 'UTF-8')
+
+    Handler = FdaXmlHandler(output_fp)
+
+    list_dir = os.listdir(dir_path)
+
+    print("total: {}".format(len(list_dir)))
+
+    for file_name in list_dir:
+
+        if file_name.find('.xml') == -1:
+            continue
+
+        print("processing {}".format(file_name))
+
+        xml.sax.parse(os.path.join(dir_path, file_name), Handler)
+
+    output_fp.close()
+
+
 if __name__ == '__main__':
 
 
@@ -607,3 +686,12 @@ if __name__ == '__main__':
     # dailymed_to_text("/Users/feili/resource/dm_spl_monthly_update_oct2018/prescription", output_file, False)
     # dailymed_to_text("/Users/feili/resource/dm_spl_monthly_update_oct2018/otc", output_file, True)
     # dailymed_parse_one_xml('/Users/feili/Downloads/AFINITOR11232018/beceb18a-7957-4a80-bcc1-b4a0b05ef106.xml', output_file, parser)
+
+    # tac 2017
+    # output_file = '/Users/feili/resource/data_to_train_emb/tac2017.txt'
+    # tac2017_to_text("/Users/feili/dataset/tac_2017_ade/train_xml", output_file, False)
+    # tac2017_to_text("/Users/feili/dataset/tac_2017_ade/unannotated_xml", output_file, True)
+
+    # training set
+    # output_file = '/Users/feili/resource/data_to_train_emb/fda2018.txt'
+    # tac2017_to_text("/Users/feili/dataset/ADE Eval Shared Resources/ose_xml_training_20181101", output_file, False)
