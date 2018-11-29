@@ -20,6 +20,10 @@ class WordSequence(nn.Module):
 
         self.input_size += opt.char_hidden_dim
 
+        if data.feat_config is not None:
+            for idx in range(len(data.feature_emb_dims)):
+                self.input_size += data.feature_emb_dims[idx]
+
         # The LSTM takes word embeddings as inputs, and outputs hidden states
         # with dimensionality hidden_dim.
         lstm_hidden = opt.hidden_dim // 2
@@ -35,7 +39,7 @@ class WordSequence(nn.Module):
             self.lstm = self.lstm.cuda(self.gpu)
 
 
-    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover):
+    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs):
         """
             input:
                 word_inputs: (batch_size, sent_len)
@@ -46,7 +50,7 @@ class WordSequence(nn.Module):
             output: 
                 Variable(batch_size, sent_len, hidden_dim)
         """
-        word_represent = self.wordrep(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)
+        word_represent = self.wordrep(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs)
         ## word_embs (batch_size, seq_len, embed_size)
 
         packed_words = pack_padded_sequence(word_represent, word_seq_lengths.cpu().numpy(), True)

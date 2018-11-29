@@ -217,11 +217,12 @@ def my_tokenize(txt):
 
 def text_tokenize_and_postagging(txt, sent_start):
     tokens= my_tokenize(txt)
+    pos_tags = nltk.pos_tag(tokens)
 
     offset = 0
-    for token in tokens:
+    for token, pos_tag in pos_tags:
         offset = txt.find(token, offset)
-        yield token, offset+sent_start, offset+len(token)+sent_start
+        yield token, offset+sent_start, offset+len(token)+sent_start, pos_tag
         offset += len(token)
 
 def token_from_sent(txt, sent_start):
@@ -244,6 +245,8 @@ def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities, ignore_regions,
             token_dict = {}
             token_dict['start'], token_dict['end'] = token[1], token[2]
             token_dict['text'] = token[0]
+            token_dict['pos'] = token[3]
+            token_dict['cap'] = featureCapital(token[0])
             if token_dict['text'].strip() in ['\n', '\t', ' ', '']:
                 continue
             # Make sure that the token text does not contain any space
@@ -264,14 +267,14 @@ def get_sentences_and_tokens_from_nltk(text, nlp_tool, entities, ignore_regions,
             sentence_tokens.append(token_dict)
 
         # debug feili
-        has_HBorDB = False
-        for token_dict in sentence_tokens:
-            if token_dict['label'] in set(['HB-X', 'D1B-X', 'D2B-X', 'D3B-X', 'D4B-X']):
-                has_HBorDB = True
-                break
-
-        if has_HBorDB:
-            sentences.append(sentence_tokens)
+        # has_HBorDB = False
+        # for token_dict in sentence_tokens:
+        #     if token_dict['label'] in set(['HB-X', 'D1B-X', 'D2B-X', 'D3B-X', 'D4B-X']):
+        #         has_HBorDB = True
+        #         break
+        # if has_HBorDB:
+        #     sentences.append(sentence_tokens)
+        sentences.append(sentence_tokens)
     return sentences
 
 def get_stanford_annotations(text, core_nlp, port=9000, annotators='tokenize,ssplit,pos,lemma'):
@@ -452,6 +455,8 @@ def loadData(basedir):
 
 def load_data_fda(basedir, isTraining):
 
+    logging.info("load_data_fda: {}".format(basedir))
+
     # spacy, nltk, stanford
     if opt.nlp_tool == "spacy":
         nlp_tool = spacy.load('en')
@@ -493,7 +498,7 @@ def load_data_fda(basedir, isTraining):
 
     return documents
 
-def read_instance_from_one_document(document, word_alphabet, char_alphabet, label_alphabet, instence_texts, instence_Ids):
+def read_instance_from_one_document(document, word_alphabet, char_alphabet, label_alphabet, instence_texts, instence_Ids, data_config):
 
     for sentence in document.sentences:
 
@@ -503,6 +508,9 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
         word_Ids = []
         char_Ids = []
         label_Ids = []
+        if data_config.feat_config is not None:
+            features = []
+            feature_Ids = []
 
         for token in sentence:
             word = token['text']
@@ -513,6 +521,20 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
             if 'label' in token:
                 labels.append(token['label'])
                 label_Ids.append(label_alphabet.get_index(token['label']))
+
+            if data_config.feat_config is not None:
+                feat_list = []
+                feat_Id = []
+                for alphabet in data_config.feature_alphabets:
+                    if alphabet.name == '[POS]':
+                        feat_list.append(token['pos'])
+                        feat_Id.append(alphabet.get_index(token['pos']))
+                    elif alphabet.name == '[Cap]':
+                        feat_list.append(token['cap'])
+                        feat_Id.append(alphabet.get_index(token['cap']))
+                features.append(feat_list)
+                feature_Ids.append(feat_Id)
+
             char_list = []
             char_Id = []
             for char in word:
@@ -522,21 +544,29 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
             char_Ids.append(char_Id)
 
         if len(labels) == 0:
-            instence_texts.append([words, chars])
-            instence_Ids.append([word_Ids, char_Ids])
+            if data_config.feat_config is not None:
+                instence_texts.append([words, chars, features])
+                instence_Ids.append([word_Ids, char_Ids, feature_Ids])
+            else:
+                instence_texts.append([words, chars])
+                instence_Ids.append([word_Ids, char_Ids])
         else:
-            instence_texts.append([words, chars, labels])
-            instence_Ids.append([word_Ids, char_Ids, label_Ids])
+            if data_config.feat_config is not None:
+                instence_texts.append([words, chars, labels, features])
+                instence_Ids.append([word_Ids, char_Ids, label_Ids, feature_Ids])
+            else:
+                instence_texts.append([words, chars, labels])
+                instence_Ids.append([word_Ids, char_Ids, label_Ids])
 
 
-def read_instance(data, word_alphabet, char_alphabet, label_alphabet):
+def read_instance(data, word_alphabet, char_alphabet, label_alphabet, data_config):
 
     instence_texts = []
     instence_Ids = []
 
     for document in data:
         read_instance_from_one_document(document, word_alphabet, char_alphabet, label_alphabet, instence_texts,
-                                        instence_Ids)
+                                        instence_Ids, data_config)
 
     return instence_texts, instence_Ids
 
@@ -705,6 +735,19 @@ class Data:
         self.pretrain_word_embedding = None
         self.word_emb_dim = opt.word_emb_dim
 
+        self.config = self.read_config(opt.config)
+        self.feat_config = None
+
+        the_item = 'ner_feature'
+        if the_item in self.config:
+            self.feat_config = self.config[the_item] ## [POS]:{emb_size:20}
+            self.feature_alphabets = []
+            self.feature_emb_dims = []
+            for k,v in self.feat_config.items():
+                self.feature_alphabets.append(Alphabet(k))
+                self.feature_emb_dims.append(int(v['emb_size']))
+
+
     def clear(self):
         self.train_data = None
         self.dev_data = None
@@ -734,6 +777,13 @@ class Data:
                     # except Exception, e:
                     #     print("document id {} {} {}".format(document.name))
                     #     exit()
+                    if self.feat_config is not None:
+                        for alphabet in self.feature_alphabets:
+                            if alphabet.name == '[POS]':
+                                alphabet.add(token['pos'])
+                            elif alphabet.name == '[Cap]':
+                                alphabet.add(token['cap'])
+
                     for char in word:
                         self.char_alphabet.add(char)
 
@@ -754,9 +804,62 @@ class Data:
         pk.dump(self.__dict__, f, 2)
         f.close()
 
+    def read_config(self, config_file):
+
+        config = config_file_to_dict(config_file)
+        return config
 
 
 
+def config_file_to_dict(input_file):
+    config = {}
+    fins = open(input_file, 'r').readlines()
+    for line in fins:
+        if len(line) > 0 and line[0] == "#":
+            continue
+        if "=" in line:
+            pair = line.strip().split('#', 1)[0].split('=', 1)
+            item = pair[0]
+            if item == "ner_feature":
+                if item not in config:
+                    feat_dict = {}
+                    config[item] = feat_dict
+                feat_dict = config[item]
+                new_pair = pair[-1].split()
+                feat_name = new_pair[0]
+                one_dict = {}
+                one_dict["emb_dir"] = None
+                one_dict["emb_size"] = 10
+                one_dict["emb_norm"] = False
+                if len(new_pair) > 1:
+                    for idx in range(1, len(new_pair)):
+                        conf_pair = new_pair[idx].split('=')
+                        if conf_pair[0] == "emb_dir":
+                            one_dict["emb_dir"] = conf_pair[-1]
+                        elif conf_pair[0] == "emb_size":
+                            one_dict["emb_size"] = int(conf_pair[-1])
+                        elif conf_pair[0] == "emb_norm":
+                            one_dict["emb_norm"] = str2bool(conf_pair[-1])
+                feat_dict[feat_name] = one_dict
+                # print "feat",feat_dict
+            else:
+                if item in config:
+                    print("Warning: duplicated config item found: %s, updated." % (pair[0]))
+                config[item] = pair[-1]
+    return config
+
+def str2bool(string):
+    if string == "True" or string == "true" or string == "TRUE":
+        return True
+    else:
+        return False
+
+
+def featureCapital(word):
+    if word[0].isalpha() and word[0].isupper():
+        return "1"
+    else:
+        return "0"
 
 
 

@@ -25,10 +25,24 @@ class WordRep(nn.Module):
         else:
             self.word_embedding.weight.data.copy_(torch.from_numpy(self.random_embedding(data.word_alphabet.size(), self.embedding_dim)))
 
+        if data.feat_config is not None:
+            self.feature_num = len(data.feature_alphabets)
+            self.feature_embedding_dims = data.feature_emb_dims
+            self.feature_embeddings = nn.ModuleList()
+            for idx in range(self.feature_num):
+                emb = nn.Embedding(data.feature_alphabets[idx].size(), self.feature_embedding_dims[idx])
+                emb.weight.data.copy_(torch.from_numpy(self.random_embedding(data.feature_alphabets[idx].size(), self.feature_embedding_dims[idx])))
+                self.feature_embeddings.append(emb)
+        else:
+            self.feature_num = 0
+
+
         if torch.cuda.is_available():
             self.drop = self.drop.cuda(self.gpu)
             self.word_embedding = self.word_embedding.cuda(self.gpu)
-
+            if data.feat_config is not None:
+                for idx in range(self.feature_num):
+                    self.feature_embeddings[idx] = self.feature_embeddings[idx].cuda(self.gpu)
 
 
     def random_embedding(self, vocab_size, embedding_dim):
@@ -39,7 +53,7 @@ class WordRep(nn.Module):
         return pretrain_emb
 
 
-    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover):
+    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs):
         """
             input:
                 word_inputs: (batch_size, sent_len)
@@ -55,6 +69,8 @@ class WordRep(nn.Module):
         sent_len = word_inputs.size(1)
         word_embs =  self.word_embedding(word_inputs)
         word_list = [word_embs]
+        for idx in range(self.feature_num):
+            word_list.append(self.feature_embeddings[idx](feature_inputs[idx]))
 
         ## calculate char lstm last hidden
         char_features = self.char_feature.get_last_hiddens(char_inputs, char_seq_lengths.cpu().numpy())

@@ -25,49 +25,99 @@ if opt.random_seed != 0:
     torch.manual_seed(opt.random_seed)
     torch.cuda.manual_seed_all(opt.random_seed)
 
-d = data.Data(opt)
+
 
 if opt.whattodo == 1:
-    logging.info("load data ...")
-    documents = data.load_data_fda(opt.train_file, True)
+    d = data.Data(opt)
 
-    # we use 5-fold cross-validation to evaluate the model
-    fold_num = 5
-    total_doc_num = len(documents)
-    dev_doc_num = total_doc_num // fold_num
+    makedir_and_clear(opt.output)
 
-    for fold_idx in range(fold_num):
-        # debug feili
-        if fold_idx ==0 or fold_idx == 1 or fold_idx == 2 or fold_idx == 4:
-            continue
+    if opt.cross_validation > 1:
 
-        fold_start = fold_idx*dev_doc_num
-        fold_end = fold_idx*dev_doc_num+dev_doc_num
-        if fold_end > total_doc_num:
-            fold_end = total_doc_num
+        logging.info("load data ...")
+        documents = data.load_data_fda(opt.train_file, True)
 
-        # debug feili
-        # d.train_data = []
-        # d.train_data.extend(documents[:fold_start])
-        # d.train_data.extend(documents[fold_end:])
-        d.train_data = documents[fold_start:fold_end]
-        d.dev_data = documents[fold_start:fold_end]
+        logging.info("use {} fold cross validataion".format(opt.cross_validation))
+        fold_num = opt.cross_validation
+        total_doc_num = len(documents)
+        dev_doc_num = total_doc_num // fold_num
 
-        logging.info("begin fold {}".format(fold_idx))
+        macro_p = 0.0
+        macro_r = 0.0
+        macro_f = 0.0
+
+        for fold_idx in range(fold_num):
+            # debug feili
+            # if fold_idx ==0 or fold_idx == 1 or fold_idx == 2 or fold_idx == 4:
+            #     continue
+
+            fold_start = fold_idx*dev_doc_num
+            fold_end = fold_idx*dev_doc_num+dev_doc_num
+            if fold_end > total_doc_num:
+                fold_end = total_doc_num
+
+            # debug feili
+            # d.train_data = documents[fold_start:fold_end]
+            d.train_data = []
+            d.train_data.extend(documents[:fold_start])
+            d.train_data.extend(documents[fold_end:])
+            d.dev_data = documents[fold_start:fold_end]
+
+            logging.info("begin fold {}".format(fold_idx))
+
+            logging.info("build alphabet ...")
+            d.build_alphabet(d.train_data)
+            d.build_alphabet(d.dev_data)
+            d.fix_alphabet()
+
+            logging.info("generate instance ...")
+            d.train_texts, d.train_Ids = data.read_instance(d.train_data, d.word_alphabet, d.char_alphabet,
+                                                            d.label_alphabet, d)
+            d.dev_texts, d.dev_Ids = data.read_instance(d.dev_data, d.word_alphabet, d.char_alphabet, d.label_alphabet, d)
+
+            logging.info("load pretrained word embedding ...")
+            d.pretrain_word_embedding, d.word_emb_dim = data.build_pretrain_embedding(opt.word_emb_file, d.word_alphabet,
+                                                                                      opt.word_emb_dim, False)
+
+            p, r, f = train.train(d, opt, fold_idx)
+
+            d.clear()
+            d.save(os.path.join(opt.output, "data_{}.pkl".format(fold_idx+1)))
+
+            macro_p += p
+            macro_r += r
+            macro_f += f
+
+
+        logging.info("the macro averaged p r f are %.4f, %.4f, %.4f" % (macro_p*1.0/fold_num, macro_r*1.0/fold_num, macro_f*1.0/fold_num))
+
+    else:
+        # if -dev_file is assigned, we can use it for debugging
+        # if not assign, we can train a model on the training set, but the model will be saved after final iteration.
+        logging.info("load data ...")
+        d.train_data = data.load_data_fda(opt.train_file, True)
+        if opt.dev_file:
+            d.dev_data = data.load_data_fda(opt.dev_file, True)
+        else:
+            logging.info("no dev data, the model will be saved after training finish")
 
         logging.info("build alphabet ...")
         d.build_alphabet(d.train_data)
-        d.build_alphabet(d.dev_data)
+        if opt.dev_file:
+            d.build_alphabet(d.dev_data)
         d.fix_alphabet()
 
         logging.info("generate instance ...")
         d.train_texts, d.train_Ids = data.read_instance(d.train_data, d.word_alphabet, d.char_alphabet,
-                                                        d.label_alphabet)
-        d.dev_texts, d.dev_Ids = data.read_instance(d.dev_data, d.word_alphabet, d.char_alphabet, d.label_alphabet)
+                                                        d.label_alphabet, d)
+        if opt.dev_file:
+            d.dev_texts, d.dev_Ids = data.read_instance(d.dev_data, d.word_alphabet, d.char_alphabet, d.label_alphabet, d)
 
         logging.info("load pretrained word embedding ...")
         d.pretrain_word_embedding, d.word_emb_dim = data.build_pretrain_embedding(opt.word_emb_file, d.word_alphabet,
                                                                                   opt.word_emb_dim, False)
 
-        train.train(d, opt)
+        p, r, f = train.train(d, opt, None)
 
+        d.clear()
+        d.save(os.path.join(opt.output, "data.pkl"))

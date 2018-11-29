@@ -19,8 +19,8 @@ class SeqModel(nn.Module):
         self.crf = CRF(data.label_alphabet.size(), self.gpu)
 
 
-    def neg_log_likelihood_loss(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, batch_label, mask):
-        outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)
+    def neg_log_likelihood_loss(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, batch_label, mask, feature_inputs):
+        outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs)
         batch_size = word_inputs.size(0)
 
         total_loss = self.crf.neg_log_likelihood_loss(outs, mask, batch_label)
@@ -30,17 +30,17 @@ class SeqModel(nn.Module):
         return total_loss, tag_seq
 
 
-    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, mask):
-        outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)
+    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, mask, feature_inputs):
+        outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs)
 
         scores, tag_seq = self.crf._viterbi_decode(outs, mask)
 
         return tag_seq
 
 
-    def decode_nbest(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, mask, nbest):
+    def decode_nbest(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, mask, nbest, feature_inputs):
 
-        outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)
+        outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs)
 
         scores, tag_seq = self.crf._viterbi_decode_nbest(outs, mask, nbest)
         return scores, tag_seq

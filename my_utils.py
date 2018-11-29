@@ -12,8 +12,9 @@ import torch.nn as nn
 import codecs
 import logging
 from options import opt
+import numpy as np
 
-def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
+def batchify_with_label(data, input_batch_list, gpu, volatile_flag=False):
     """
         input: list of words, chars and labels, various length. [[words,chars, labels],[words,chars,labels],...]
             words: word ids for one sentence. (batch_size, sent_len)
@@ -32,10 +33,18 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
         batch_size = len(input_batch_list)
         words = [sent[0] for sent in input_batch_list]
         chars = [sent[1] for sent in input_batch_list]
-        if len(input_batch_list[0]) > 2:
-            labels = [sent[2] for sent in input_batch_list]
+        if data.feat_config is not None:
+            if len(input_batch_list[0]) > 3:
+                labels = [sent[2] for sent in input_batch_list]
+            else:
+                labels = None
+            features = [np.asarray(sent[3]) for sent in input_batch_list]
+            feature_num = len(features[0][0])
         else:
-            labels = None
+            if len(input_batch_list[0]) > 2:
+                labels = [sent[2] for sent in input_batch_list]
+            else:
+                labels = None
         word_seq_lengths = torch.LongTensor(list(map(len, words)))
         # max_seq_len = word_seq_lengths.max()
         # word_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len))).long()
@@ -44,6 +53,10 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
         max_seq_len = word_seq_lengths.max().item()
         word_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len), dtype=torch.long))
         label_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len), dtype=torch.long))
+        if data.feat_config is not None:
+            feature_seq_tensors = []
+            for idx in range(feature_num):
+                feature_seq_tensors.append(autograd.Variable(torch.zeros((batch_size, max_seq_len), dtype=torch.long)))
 
         mask = autograd.Variable(torch.zeros((batch_size, max_seq_len), dtype=torch.uint8))
         if labels:
@@ -51,13 +64,22 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
                 word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
                 label_seq_tensor[idx, :seqlen] = torch.LongTensor(label)
                 mask[idx, :seqlen] = torch.Tensor([1]*seqlen.item())
+                if data.feat_config is not None:
+                    for idy in range(feature_num):
+                        feature_seq_tensors[idy][idx, :seqlen] = torch.LongTensor(features[idx][:, idy])
         else:
             for idx, (seq, seqlen) in enumerate(zip(words, word_seq_lengths)):
                 word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
                 mask[idx, :seqlen] = torch.Tensor([1]*seqlen.item())
+                if data.feat_config is not None:
+                    for idy in range(feature_num):
+                        feature_seq_tensors[idy][idx, :seqlen] = torch.LongTensor(features[idx][:, idy])
 
         word_seq_lengths, word_perm_idx = word_seq_lengths.sort(0, descending=True)
         word_seq_tensor = word_seq_tensor[word_perm_idx]
+        if data.feat_config is not None:
+            for idx in range(feature_num):
+                feature_seq_tensors[idx] = feature_seq_tensors[idx][word_perm_idx]
 
         if labels:
             label_seq_tensor = label_seq_tensor[word_perm_idx]
@@ -87,14 +109,23 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
             word_seq_recover = word_seq_recover.cuda(gpu)
             if labels:
                 label_seq_tensor = label_seq_tensor.cuda(gpu)
+            if data.feat_config is not None:
+                for idx in range(feature_num):
+                    feature_seq_tensors[idx] = feature_seq_tensors[idx].cuda(gpu)
             char_seq_tensor = char_seq_tensor.cuda(gpu)
             char_seq_recover = char_seq_recover.cuda(gpu)
             mask = mask.cuda(gpu)
 
         if labels:
-            return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
+            if data.feat_config is not None:
+                return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask, feature_seq_tensors
+            else:
+                return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask, None
         else:
-            return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, None, mask
+            if data.feat_config is not None:
+                return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, None, mask, feature_seq_tensors
+            else:
+                return word_seq_tensor, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, None, mask, None
 
 
 def recover_nbest_label(pred_variable, mask_variable, label_alphabet, word_recover):
@@ -194,16 +225,16 @@ def evaluate(data, opt, model, name, bEval, nbest=0):
         instance = instances[start:end]
         if not instance:
             continue
-        batch_word, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, opt.gpu, True)
+        batch_word, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask, batch_features  = batchify_with_label(data, instance, opt.gpu, True)
         if nbest>0:
-            scores, nbest_tag_seq = model.decode_nbest(batch_word, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask, nbest)
+            scores, nbest_tag_seq = model.decode_nbest(batch_word, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask, nbest, batch_features)
             nbest_pred_result = recover_nbest_label(nbest_tag_seq, mask, data.label_alphabet, batch_wordrecover)
             nbest_pred_results += nbest_pred_result
             pred_scores += scores[batch_wordrecover].cpu().data.numpy().tolist()
             ## select the best sequence to evalurate
             tag_seq = nbest_tag_seq[:,:,0]
         else:
-            tag_seq = model(batch_word, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask)
+            tag_seq = model(batch_word, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask, batch_features)
         # print "tag:",tag_seq
         if bEval:
             pred_label, gold_label = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover)
