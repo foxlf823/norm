@@ -125,7 +125,7 @@ def test(data, opt):
     for fileName in corpus_files:
         try:
             start = time.time()
-            document = processOneFile(fileName, None, corpus_dir, nlp_tool)
+            document = processOneFile(fileName, None, corpus_dir, nlp_tool, opt.types, opt.type_filter)
 
             data.test_texts = []
             data.test_Ids = []

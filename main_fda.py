@@ -34,8 +34,18 @@ if opt.whattodo == 1:
 
     if opt.cross_validation > 1:
 
-        logging.info("load data ...")
-        documents = data.load_data_fda(opt.train_file, True)
+        documents = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+
+        external_train_data = []
+        if 'ext_corpus' in d.config:
+            ext_corpus = d.config['ext_corpus']
+            for k,v in ext_corpus.items():
+                if k == 'made' or k == 'cardio':
+                    external_train_data.extend(data.loadData(v['path'], True, v.get('types'), v.get('types')))
+                elif k == 'tac':
+                    external_train_data.extend(data.load_data_fda(v['path'], True, v.get('types'), v.get('types')))
+                else:
+                    raise RuntimeError("not support external corpus")
 
         logging.info("use {} fold cross validataion".format(opt.cross_validation))
         fold_num = opt.cross_validation
@@ -55,12 +65,16 @@ if opt.whattodo == 1:
             fold_end = fold_idx*dev_doc_num+dev_doc_num
             if fold_end > total_doc_num:
                 fold_end = total_doc_num
+            if fold_idx == fold_num-1 and fold_end < total_doc_num:
+                fold_end = total_doc_num
 
             # debug feili
             # d.train_data = documents[fold_start:fold_end]
             d.train_data = []
             d.train_data.extend(documents[:fold_start])
             d.train_data.extend(documents[fold_end:])
+            if len(external_train_data) != 0:
+                d.train_data.extend(external_train_data)
             d.dev_data = documents[fold_start:fold_end]
 
             logging.info("begin fold {}".format(fold_idx))
@@ -94,12 +108,27 @@ if opt.whattodo == 1:
     else:
         # if -dev_file is assigned, we can use it for debugging
         # if not assign, we can train a model on the training set, but the model will be saved after final iteration.
-        logging.info("load data ...")
-        d.train_data = data.load_data_fda(opt.train_file, True)
+        d.train_data = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+
+        external_train_data = []
+        if 'ext_corpus' in d.config:
+            ext_corpus = d.config['ext_corpus']
+            for k,v in ext_corpus.items():
+                if k == 'made' or k == 'cardio':
+                    external_train_data.extend(data.loadData(v['path'], True, v.get('types'), v.get('types')))
+                elif k == 'tac':
+                    external_train_data.extend(data.load_data_fda(v['path'], True, v.get('types'), v.get('types')))
+                else:
+                    raise RuntimeError("not support external corpus")
+        if len(external_train_data) != 0:
+            d.train_data.extend(external_train_data)
+
         if opt.dev_file:
-            d.dev_data = data.load_data_fda(opt.dev_file, True)
+            d.dev_data = data.load_data_fda(opt.dev_file, True, opt.types, opt.type_filter)
         else:
             logging.info("no dev data, the model will be saved after training finish")
+
+
 
         logging.info("build alphabet ...")
         d.build_alphabet(d.train_data)

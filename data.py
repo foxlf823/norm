@@ -43,11 +43,12 @@ def getLabel(start, end, entities):
 def getLabel_BIOHD1234(sent, tokenIdx, entities, ignore_regions, section_id):
     # if token occur in ignored regions, its label should be 'O'
 
-    for ignore_region in ignore_regions:
-        if ignore_region.section != section_id:
-            continue
-        if sent[tokenIdx][1] >= ignore_region.start and sent[tokenIdx][2] <= ignore_region.end:
-            return 'O'
+    if ignore_regions is not None:
+        for ignore_region in ignore_regions:
+            if ignore_region.section != section_id:
+                continue
+            if sent[tokenIdx][1] >= ignore_region.start and sent[tokenIdx][2] <= ignore_region.end:
+                return 'O'
 
     # count the number that tok occurs in spans
 
@@ -318,7 +319,7 @@ def get_sentences_and_tokens_from_stanford(text, nlp_tool, entities):
     return sentences
 
 
-def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
+def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, types, type_filter):
     document = Document()
     document.name = fileName[:fileName.find('.')]
 
@@ -328,22 +329,12 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
         entities = []
 
         for entity in bioc_passage.annotations:
-            if opt.types and (entity.infons['type'] not in opt.type_filter):
+            if types and (entity.infons['type'] not in type_filter):
                 continue
             entity_ = Entity()
-            if isinstance(entity.text, str):
-                # text = entity.text.decode('utf-8')
-                text = entity.text
-            else: # unicode
-                text = entity.text
-            entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
-                           text, None, None, None)
-            # try:
-            #     entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
-            #                entity.text.decode('utf-8'), None, None, None)
-            # except Exception, e:
-            #     print("entity.text.decode error: document:{}, entity.id:{}".format(fileName, entity.id))
-            #     continue
+            entity_.id = entity.id
+            entity_.type = entity.infons['type']
+            entity_.spans.append([entity.locations[0].offset,entity.locations[0].end])
             entities.append(entity_)
 
         document.entities = entities
@@ -351,17 +342,17 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool):
     corpus_file = get_text_file(join(corpus_dir, fileName.split('.bioc')[0]))
 
     if opt.nlp_tool == "spacy":
-        if annotation_dir:
+        if isTraining:
             sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, document.entities)
         else:
             sentences = get_sentences_and_tokens_from_spacy(corpus_file, nlp_tool, None)
     elif opt.nlp_tool == "nltk":
-        if annotation_dir:
-            sentences = get_sentences_and_tokens_from_nltk(corpus_file, nlp_tool, document.entities)
+        if isTraining:
+            sentences = get_sentences_and_tokens_from_nltk(corpus_file, nlp_tool, document.entities, None, None)
         else:
-            sentences = get_sentences_and_tokens_from_nltk(corpus_file, nlp_tool, None)
+            sentences = get_sentences_and_tokens_from_nltk(corpus_file, nlp_tool, None, None, None)
     elif opt.nlp_tool == "stanford":
-        if annotation_dir:
+        if isTraining:
             sentences = get_sentences_and_tokens_from_stanford(corpus_file, nlp_tool, document.entities)
         else:
             sentences = get_sentences_and_tokens_from_stanford(corpus_file, nlp_tool, None)
@@ -380,7 +371,7 @@ def get_fda_file(file_path):
 
 
 
-def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining):
+def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, type_filter):
     documents = []
     annotation_file = get_fda_file(join(annotation_dir, fileName))
 
@@ -394,7 +385,7 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining):
         for entity in annotation_file.mentions:
             if entity.section != section.id:
                 continue
-            if opt.types and (entity.type not in opt.type_filter):
+            if types and (entity.type not in type_filter):
                 continue
             entities.append(entity)
 
@@ -417,12 +408,25 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining):
 
 
 
-def loadData(basedir):
-    # annotation_dir = join(basedir, 'annotations')
-    # corpus_dir = join(basedir, 'corpus')
+def loadData(basedir, isTraining, types, type_filter):
 
-    annotation_dir = join(basedir, 'bioc')
-    corpus_dir = join(basedir, 'txt')
+    logging.info("loadData: {}".format(basedir))
+
+    list_dir = listdir(basedir)
+    if 'bioc' in list_dir:
+        annotation_dir = join(basedir, 'bioc')
+    elif 'annotations' in list_dir:
+        annotation_dir = join(basedir, 'annotations')
+    else:
+        raise RuntimeError("no bioc or annotations in {}".format(basedir))
+
+    if 'txt' in list_dir:
+        corpus_dir = join(basedir, 'txt')
+    elif 'corpus' in list_dir:
+        corpus_dir = join(basedir, 'corpus')
+    else:
+        raise RuntimeError("no txt or corpus in {}".format(basedir))
+
     # spacy, nltk, stanford
     if opt.nlp_tool == "spacy":
         nlp_tool = spacy.load('en')
@@ -435,25 +439,32 @@ def loadData(basedir):
 
     documents = []
 
-    count_entity_mention = 0
+    count_document = 0
+    count_sentence = 0
+    count_entity = 0
 
     annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
     for fileName in annotation_files:
         try:
-            document = processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool)
+            document = processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, types, type_filter)
         except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             continue
 
         documents.append(document)
 
-        count_entity_mention += len(document.entities)
+        # statistics
+        count_document += 1
+        count_sentence += len(document.sentences)
+        count_entity += len(document.entities)
 
-    logging.info("{} entities in {}".format(count_entity_mention, basedir))
+    logging.info("document number: {}".format(count_document))
+    logging.info("sentence number: {}".format(count_sentence))
+    logging.info("entity number {}".format(count_entity))
 
     return documents
 
-def load_data_fda(basedir, isTraining):
+def load_data_fda(basedir, isTraining, types, type_filter):
 
     logging.info("load_data_fda: {}".format(basedir))
 
@@ -477,7 +488,7 @@ def load_data_fda(basedir, isTraining):
     annotation_files = [f for f in listdir(basedir) if f.find('.xml')!=-1]
     for fileName in annotation_files:
         try:
-            document = processOneFile_fda(fileName, basedir, nlp_tool, isTraining)
+            document = processOneFile_fda(fileName, basedir, nlp_tool, isTraining, types, type_filter)
         except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             continue
@@ -842,6 +853,22 @@ def config_file_to_dict(input_file):
                             one_dict["emb_norm"] = str2bool(conf_pair[-1])
                 feat_dict[feat_name] = one_dict
                 # print "feat",feat_dict
+            elif item == "ext_corpus":
+                if item not in config:
+                    feat_dict = {}
+                    config[item] = feat_dict
+                feat_dict = config[item]
+                new_pair = pair[-1].split()
+                feat_name = new_pair[0]
+                one_dict = {}
+                if len(new_pair) > 1:
+                    for idx in range(1, len(new_pair)):
+                        conf_pair = new_pair[idx].split('=')
+                        if conf_pair[0] == 'types':
+                            one_dict[conf_pair[0]] = set(conf_pair[1].split(','))
+                        else:
+                            one_dict[conf_pair[0]] = conf_pair[1]
+                feat_dict[feat_name] = one_dict
             else:
                 if item in config:
                     print("Warning: duplicated config item found: %s, updated." % (pair[0]))
