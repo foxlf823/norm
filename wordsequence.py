@@ -18,7 +18,10 @@ class WordSequence(nn.Module):
         self.wordrep = WordRep(data, opt)
         self.input_size = data.word_emb_dim
 
-        self.input_size += opt.char_hidden_dim
+        if opt.elmo:
+            self.input_size += data.word_emb_dim
+        else :
+            self.input_size += opt.char_hidden_dim
 
         if data.feat_config is not None:
             for idx in range(len(data.feature_emb_dims)):
@@ -39,7 +42,7 @@ class WordSequence(nn.Module):
             self.lstm = self.lstm.cuda(self.gpu)
 
 
-    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs):
+    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs, text_inputs):
         """
             input:
                 word_inputs: (batch_size, sent_len)
@@ -50,7 +53,7 @@ class WordSequence(nn.Module):
             output: 
                 Variable(batch_size, sent_len, hidden_dim)
         """
-        word_represent = self.wordrep(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs)
+        word_represent = self.wordrep(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs, text_inputs)
         ## word_embs (batch_size, seq_len, embed_size)
 
         packed_words = pack_padded_sequence(word_represent, word_seq_lengths.cpu().numpy(), True)

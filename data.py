@@ -522,6 +522,7 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
         if data_config.feat_config is not None:
             features = []
             feature_Ids = []
+        words_lower = []
 
         for token in sentence:
             word = token['text']
@@ -546,6 +547,9 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
                 features.append(feat_list)
                 feature_Ids.append(feat_Id)
 
+            # for elmo
+            words_lower.append(word.lower())
+
             char_list = []
             char_Id = []
             for char in word:
@@ -556,17 +560,17 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
 
         if len(labels) == 0:
             if data_config.feat_config is not None:
-                instence_texts.append([words, chars, features])
+                instence_texts.append([words, chars, words_lower, features])
                 instence_Ids.append([word_Ids, char_Ids, feature_Ids])
             else:
-                instence_texts.append([words, chars])
+                instence_texts.append([words, chars, words_lower])
                 instence_Ids.append([word_Ids, char_Ids])
         else:
             if data_config.feat_config is not None:
-                instence_texts.append([words, chars, labels, features])
+                instence_texts.append([words, chars, labels, words_lower, features])
                 instence_Ids.append([word_Ids, char_Ids, label_Ids, feature_Ids])
             else:
-                instence_texts.append([words, chars, labels])
+                instence_texts.append([words, chars, labels, words_lower])
                 instence_Ids.append([word_Ids, char_Ids, label_Ids])
 
 
@@ -757,6 +761,7 @@ class Data:
             for k,v in self.feat_config.items():
                 self.feature_alphabets.append(Alphabet(k))
                 self.feature_emb_dims.append(int(v['emb_size']))
+
 
 
     def clear(self):

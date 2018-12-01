@@ -32,6 +32,8 @@ parser.add_argument('-test_in_cpu', action='store_true', default=False)
 parser.add_argument('-schema', default='BMES', help='BMES, BIOHD_1234')
 parser.add_argument('-cross_validation', type=int, default=1, help='1-not use cross validation; >1 - use n-fold cross validation')
 parser.add_argument('-config', default='./config.txt')
+parser.add_argument('-elmo', action='store_true', default=False)
+
 
 opt = parser.parse_args()
 

@@ -30,7 +30,11 @@ def train(data, opt, fold_idx):
     for idx in range(opt.iter):
         epoch_start = time.time()
 
-        random.shuffle(data.train_Ids)
+        if opt.elmo:
+            my_utils.shuffle(data.train_texts, data.train_Ids)
+        else:
+            random.shuffle(data.train_Ids)
+
 
         model.train()
         model.zero_grad()
@@ -45,14 +49,18 @@ def train(data, opt, fold_idx):
             if end >train_num:
                 end = train_num
             instance = data.train_Ids[start:end]
+            if opt.elmo:
+                instance_text = data.train_texts[start:end]
+            else:
+                instance_text = None
             if not instance:
                 continue
 
-            batch_word, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask, batch_features = batchify_with_label(
-                data, instance, opt.gpu)
+            batch_word, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask, batch_features, batch_text = batchify_with_label(
+                data, instance, instance_text, opt.gpu)
 
             loss, tag_seq = model.neg_log_likelihood_loss(batch_word, batch_wordlen, batch_char,
-                                                          batch_charlen, batch_charrecover, batch_label, mask, batch_features)
+                                                          batch_charlen, batch_charrecover, batch_label, mask, batch_features, batch_text)
 
             loss.backward()
             if opt.gradient_clip > 0:

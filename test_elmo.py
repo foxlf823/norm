@@ -17,10 +17,12 @@ from elmoformanylangs import Embedder
 def test_elmoformanylangs():
 
     e = Embedder('/Users/feili/project/ELMoForManyLangs/output/en')
+    # e = Embedder('/Users/feili/resource/data_to_train_emb/elmo_ade_lower_0norm_200d')
 
-
-    sents = [['Labour', 'Party', 'yes'],
-    ['Legacy']]
+    sents = [['LABA', ',', 'such', 'as', 'vilanterol']]
+    # for idx, sent in enumerate(sents):
+    #     for idy, tk in enumerate(sent):
+    #         sents[idx][idy] = sents[idx][idy].lower()
 
     ret = e.sents2elmo(sents)
     # will return a list of numpy arrays
@@ -29,5 +31,8 @@ def test_elmoformanylangs():
     pass
 
 
+
+
 if __name__ == '__main__':
     test_elmoformanylangs()
+    pass

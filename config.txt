@@ -1,6 +1,8 @@
 ner_feature=[POS] emb_size=20
 ner_feature=[Cap] emb_size=10
-ext_corpus=made path=/Users/feili/Desktop/umass/bioC_data/other_debug/cardio_data types=ADE
-ext_corpus=cardio path=/Users/feili/Desktop/umass/bioC_data/other_debug/cardio_data
-ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml_debug types=AdverseReaction
+#ext_corpus=made path=/Users/feili/Desktop/umass/bioC_data/other_debug/cardio_data types=ADE
+#ext_corpus=cardio path=/Users/feili/Desktop/umass/bioC_data/other_debug/cardio_data
+#ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml_debug types=AdverseReaction
+#elmo_path=/Users/feili/resource/data_to_train_emb/elmo_ade_lower_0norm_200d
+elmo_path=/Users/feili/project/ELMoForManyLangs/output/en
 

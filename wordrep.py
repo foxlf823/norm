@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import numpy as np
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from charcnn import CharCNN
+from elmoformanylangs import Embedder
+import logging
 
 class WordRep(nn.Module):
     def __init__(self, data, opt):
@@ -14,9 +16,20 @@ class WordRep(nn.Module):
         self.gpu = opt.gpu
         self.batch_size = opt.batch_size
 
-        self.char_hidden_dim = opt.char_hidden_dim
-        self.char_embedding_dim = opt.char_emb_dim
-        self.char_feature = CharCNN(data.char_alphabet.size(), None, self.char_embedding_dim, self.char_hidden_dim, opt.dropout, self.gpu)
+        self.use_elmo = False
+        if opt.elmo:
+            logging.info("use elmo, loading ...")
+            self.use_elmo = True
+            self.elmo = Embedder(data.config['elmo_path'])
+            # we project the elmo representation to the same dim of word embedding
+            self.elmo_projection = nn.Linear(self.elmo.config['encoder']['projection_dim']*2, data.word_emb_dim, False)
+            self.elmo_drop = nn.Dropout(opt.dropout)
+        else:
+            self.char_hidden_dim = opt.char_hidden_dim
+            self.char_embedding_dim = opt.char_emb_dim
+            self.char_feature = CharCNN(data.char_alphabet.size(), None, self.char_embedding_dim, self.char_hidden_dim, opt.dropout, self.gpu)
+
+
         self.embedding_dim = data.word_emb_dim
         self.drop = nn.Dropout(opt.dropout)
         self.word_embedding = nn.Embedding(data.word_alphabet.size(), self.embedding_dim)
@@ -44,6 +57,10 @@ class WordRep(nn.Module):
                 for idx in range(self.feature_num):
                     self.feature_embeddings[idx] = self.feature_embeddings[idx].cuda(self.gpu)
 
+            if opt.elmo:
+                self.elmo_projection = self.elmo_projection.cuda(self.gpu)
+                self.elmo_drop = self.elmo_drop.cuda(self.gpu)
+
 
     def random_embedding(self, vocab_size, embedding_dim):
         pretrain_emb = np.empty([vocab_size, embedding_dim])
@@ -53,7 +70,7 @@ class WordRep(nn.Module):
         return pretrain_emb
 
 
-    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs):
+    def forward(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs, text_inputs):
         """
             input:
                 word_inputs: (batch_size, sent_len)
@@ -72,13 +89,20 @@ class WordRep(nn.Module):
         for idx in range(self.feature_num):
             word_list.append(self.feature_embeddings[idx](feature_inputs[idx]))
 
-        ## calculate char lstm last hidden
-        char_features = self.char_feature.get_last_hiddens(char_inputs, char_seq_lengths.cpu().numpy())
-        char_features = char_features[char_seq_recover]
-        char_features = char_features.view(batch_size,sent_len,-1)
-        ## concat word and char together
+        if self.use_elmo:
+            with torch.no_grad():
+                elmo_rep = torch.from_numpy(np.array(self.elmo.sents2elmo(text_inputs))) # batch, seq_len, 1024
+
+            char_features = self.elmo_drop(self.elmo_projection(elmo_rep))
+            # char_features = elmo_rep
+
+        else:
+
+            char_features = self.char_feature.get_last_hiddens(char_inputs, char_seq_lengths.cpu().numpy())
+            char_features = char_features[char_seq_recover]
+            char_features = char_features.view(batch_size, sent_len, -1)
+
         word_list.append(char_features)
-        word_embs = torch.cat([word_embs, char_features], 2)
 
         word_embs = torch.cat(word_list, 2)
         word_represent = self.drop(word_embs)
