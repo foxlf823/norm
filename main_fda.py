@@ -9,6 +9,7 @@ import data
 import train
 import test
 from my_utils import makedir_and_clear
+import test_fda
 
 
 logger = logging.getLogger()
@@ -150,3 +151,14 @@ if opt.whattodo == 1:
 
         d.clear()
         d.save(os.path.join(opt.output, "data.pkl"))
+
+elif opt.whattodo == 2:
+    pass
+
+else:
+
+    d = data.Data(opt)
+    d.load(os.path.join(opt.output, "data.pkl"))
+
+    test_fda.test(d, opt)
+

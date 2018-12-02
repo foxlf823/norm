@@ -38,10 +38,13 @@ def batchify_with_label(data, input_batch_list, input_batch_list_text, gpu):
         if data.feat_config is not None:
             if len(input_batch_list[0]) > 3:
                 labels = [sent[2] for sent in input_batch_list]
+                features = [np.asarray(sent[3]) for sent in input_batch_list]
+                feature_num = len(features[0][0])
             else:
                 labels = None
-            features = [np.asarray(sent[3]) for sent in input_batch_list]
-            feature_num = len(features[0][0])
+                features = [np.asarray(sent[2]) for sent in input_batch_list]
+                feature_num = len(features[0][0])
+
         else:
             if len(input_batch_list[0]) > 2:
                 labels = [sent[2] for sent in input_batch_list]
@@ -397,6 +400,19 @@ def shuffle(a,b):
     random.shuffle(a)
     random.setstate(start_state)
     random.shuffle(b)
+
+# determine whether two spans are overlapped
+def is_overlapped(a_start, a_end, b_start, b_end):
+    if a_start <= b_start and a_end > b_start:
+        return True
+    elif a_start < b_end and a_end >= b_end:
+        return True
+    elif a_start >= b_start and a_end <= b_end:
+        return True
+    elif a_start <= b_start and a_end >= b_end:
+        return True
+    else:
+        return False
 
 # print("stat entity overlapped in MADE .........")
 # stat_entity_overlap("/Users/feili/Desktop/umass/MADE/MADE-1.0/annotations")

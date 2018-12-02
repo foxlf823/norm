@@ -1,7 +1,7 @@
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-whattodo', type=int, default=1, help='1-train, 2-test')
+parser.add_argument('-whattodo', type=int, default=1, help='1-train ner, 2-train norm, 3-test')
 parser.add_argument('-verbose', action='store_true', help='1-print debug logs')
 parser.add_argument('-random_seed', type=int, default=1)
 parser.add_argument('-train_file', default='./sample')

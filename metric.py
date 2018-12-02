@@ -27,8 +27,8 @@ def get_ner_fmeasure(golden_lists, predict_lists, label_type="BMES"):
             gold_matrix = get_ner_BMES(golden_list)
             pred_matrix = get_ner_BMES(predict_list)
         elif label_type == 'BIOHD_1234':
-            gold_matrix = get_ner_BIOHD_1234(golden_list)
-            pred_matrix = get_ner_BIOHD_1234(predict_list)
+            gold_matrix = get_ner_BIOHD_1234(golden_list, True)
+            pred_matrix = get_ner_BIOHD_1234(predict_list, True)
         else:
             gold_matrix = get_ner_BIO(golden_list)
             pred_matrix = get_ner_BIO(predict_list)
@@ -183,7 +183,7 @@ def checkWrongState(labelSequence, size):
     else:
         return False
 
-def get_ner_BIOHD_1234(outputs):
+def get_ner_BIOHD_1234(outputs, return_str_or_not):
     entities = []
     for idx in range(len(outputs)):
         labelName = outputs[idx]
@@ -366,15 +366,18 @@ def get_ner_BIOHD_1234(outputs):
 
             anwserEntities.insert(iter, temp)
 
-    # transfer Entity class into its str representation
-    strEntities = []
-    for answer in anwserEntities:
-        strEntity = 'X'
-        for tkSpan in answer.tkSpans:
-            strEntity += '['+str(tkSpan[0])+','+str(tkSpan[1])+']'
-        strEntities.append(strEntity)
+    if return_str_or_not:
+        # transfer Entity class into its str representation
+        strEntities = []
+        for answer in anwserEntities:
+            strEntity = 'X'
+            for tkSpan in answer.tkSpans:
+                strEntity += '['+str(tkSpan[0])+','+str(tkSpan[1])+']'
+            strEntities.append(strEntity)
+        return strEntities
+    else:
+        return anwserEntities
 
-    return strEntities
 
 def get_ner_BIO(label_list):
     # list_len = len(word_list)

@@ -4,7 +4,7 @@ import numpy as np
 import pickle as pk
 from os import listdir
 from os.path import isfile, join
-from my_utils import get_bioc_file, get_text_file, normalize_word
+from my_utils import get_bioc_file, get_text_file, normalize_word, is_overlapped
 import spacy
 from data_structure import Entity, Document
 from options import opt
@@ -79,7 +79,8 @@ def getLabel_BIOHD1234(sent, tokenIdx, entities, ignore_regions, section_id):
                 if currentSpan[0] == span[0] and currentSpan[1] == span[1]:
                     continue
 
-                if (currentSpan[1] >= span[0] and currentSpan[0] <= span[1]) :
+                # if (currentSpan[1] >= span[0] and currentSpan[0] <= span[1]) :
+                if is_overlapped(currentSpan[0], currentSpan[1], span[0], span[1]):
                     overlapped = True
                     overlappedSpan = span
                     break
@@ -404,7 +405,7 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, ty
 
         documents.append(document)
 
-    return documents
+    return documents, annotation_file
 
 
 
@@ -488,7 +489,7 @@ def load_data_fda(basedir, isTraining, types, type_filter):
     annotation_files = [f for f in listdir(basedir) if f.find('.xml')!=-1]
     for fileName in annotation_files:
         try:
-            document = processOneFile_fda(fileName, basedir, nlp_tool, isTraining, types, type_filter)
+            document, _ = processOneFile_fda(fileName, basedir, nlp_tool, isTraining, types, type_filter)
         except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             continue
@@ -595,7 +596,8 @@ def read_instance(data, word_alphabet, char_alphabet, label_alphabet, data_confi
 #     return s
 
 def _readString(f, code):
-    s = unicode()
+    # s = unicode()
+    s = str()
     c = f.read(1)
     value = ord(c)
 
