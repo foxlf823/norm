@@ -5,7 +5,6 @@ import codecs
 import re
 import shutil
 from jpype import *
-from data import get_fda_file
 
 class Util:
     @classmethod
@@ -205,36 +204,36 @@ class Abbreviation:
             self.textAbbreviationExpansionMap[abbreviation] = expansion
 
 
-    def setTextAbbreviationExpansionMap (self, text):
-        lines = re.split(r"\n+", text)
-        for line in lines:
-            line = line.strip()
-            tokens = re.split(r"\s+", line)
-            size = len(tokens)
-            for i in range(size):
-                expansionIndex = -1
+    def setTextAbbreviationExpansionMap (self, file_path):
+        with codecs.open(file_path, 'r', 'UTF-8') as fp:
+            for line in fp:
+                line = line.strip()
+                tokens = re.split(r"\s+", line)
+                size = len(tokens)
+                for i in range(size):
+                    expansionIndex = -1
 
-                if (re.match(r"\(\w+(\-\w+)?\)(,|\.)?", tokens[i])) or (re.match(r"\([A-Z]+(;|,|\.)", tokens[i])):
-                    expansionIndex = i - 1
-                elif re.match(r"[A-Z]+\)", tokens[i]):
-                    expansionIndex = Util.firstIndexOf(tokens, i, r"\(")
+                    if (re.match(r"\(\w+(\-\w+)?\)(,|\.)?", tokens[i])) or (re.match(r"\([A-Z]+(;|,|\.)", tokens[i])):
+                        expansionIndex = i - 1
+                    elif re.match(r"[A-Z]+\)", tokens[i]):
+                        expansionIndex = Util.firstIndexOf(tokens, i, r"\(")
 
-                if expansionIndex == -1:
-                    continue
+                    if expansionIndex == -1:
+                        continue
 
-                abbreviation = tokens[i].replace(u"(", u"").replace(u")", u"").lower()
-                reversedAbbreviation = Ling.reverse(abbreviation)
+                    abbreviation = tokens[i].replace(u"(", u"").replace(u")", u"").lower()
+                    reversedAbbreviation = Ling.reverse(abbreviation)
 
-                if abbreviation[len(abbreviation) - 1] == u',' or abbreviation[len(abbreviation) - 1] == u'.' or abbreviation[len(abbreviation) - 1] == u';':
-                    abbreviation = abbreviation[0: len(abbreviation) - 1]
+                    if abbreviation[len(abbreviation) - 1] == u',' or abbreviation[len(abbreviation) - 1] == u'.' or abbreviation[len(abbreviation) - 1] == u';':
+                        abbreviation = abbreviation[0: len(abbreviation) - 1]
 
-                if (abbreviation in self.textAbbreviationExpansionMap) or (reversedAbbreviation in self.textAbbreviationExpansionMap):
-                    continue
+                    if (abbreviation in self.textAbbreviationExpansionMap) or (reversedAbbreviation in self.textAbbreviationExpansionMap):
+                        continue
 
-                abbreviationLength = len(abbreviation)
-                self.setTextAbbreviationExpansionMap_(tokens, abbreviationLength, abbreviation, expansionIndex)
-                if abbreviation not in self.textAbbreviationExpansionMap:
-                    self.setTextAbbreviationExpansionMap_(tokens, abbreviationLength, reversedAbbreviation, expansionIndex)
+                    abbreviationLength = len(abbreviation)
+                    self.setTextAbbreviationExpansionMap_(tokens, abbreviationLength, abbreviation, expansionIndex)
+                    if abbreviation not in self.textAbbreviationExpansionMap:
+                        self.setTextAbbreviationExpansionMap_(tokens, abbreviationLength, reversedAbbreviation, expansionIndex)
 
     def getTextAbbreviationExpansionMap(self):
         return self.textAbbreviationExpansionMap
@@ -510,6 +509,27 @@ class Terminology:
     def getCuiAlternateCuiMap(self):
         return self.cuiAlternateCuiMap
 
+    # 如果concept id首字母是字母，则为preferredID
+    # 否则设置第一个为preferredID
+    # preferred id和altID可能重复
+    def get_preferredID_set_altID(self, identifiers):
+        set = False
+        altIDs = list()
+
+        for i, _ in enumerate(identifiers):
+            if i == 0:
+                preferredID = identifiers[i]
+            if identifiers[i][0].isalpha() and set == False:
+                preferredID = identifiers[i]
+                set = True
+                continue
+
+            altIDs.append(identifiers[i])
+
+        if len(altIDs) != 0:
+            self.cuiAlternateCuiMap[preferredID] = altIDs
+
+        return preferredID
 
     def loadMaps(self, conceptName, cui):
         self.nameToCuiListMap = Util.setMap(self.nameToCuiListMap, conceptName, cui)
@@ -526,6 +546,22 @@ class Terminology:
 
             self.tokenToNameListMap = Util.setMap(self.tokenToNameListMap, conceptNameToken, conceptName);
 
+        if cui.find(u"|") != -1: # 当使用训练数据作为termininology是才进入，对应composite mention
+            self.nameToCuiListMap.pop(conceptName)
+            self.stemmedNameToCuiListMap.pop(stemmedConceptName)
+            for conceptNameToken in conceptNameTokens:
+                if conceptNameToken in Ling.getStopwordsList():
+                    continue
+                name_list = self.tokenToNameListMap.get(conceptNameToken)
+                new_name_list = list()
+                for name in name_list:
+                    if name == conceptName:
+                        continue
+                    new_name_list.append(name)
+                self.tokenToNameListMap[conceptNameToken] = new_name_list
+
+            # composite mention存入
+            self.compoundNameToCuiListMap = Util.setMap(self.compoundNameToCuiListMap, conceptName, cui)
 
 
     def loadTerminology(self, path):
@@ -536,57 +572,49 @@ class Terminology:
                 if line == u'':
                     continue
                 token = re.split(r"\|\|", line)
-                cui = token[0]
+                cui = self.get_preferredID_set_altID(re.split(r"\|",token[0])) if token[0].find(u"|") != -1 else token[0]
 
-                conceptNames = token[1].lower()
+                conceptNames = re.split(r"\|", token[1].lower())
 
-                self.loadMaps(conceptNames, cui)
+                for conceptName in conceptNames:
+                    self.loadMaps(conceptName, cui)
 
     def loadTrainingDataTerminology(self, path):
 
         for input_file_name in os.listdir(path):
-            if input_file_name.find(".xml") == -1:
+            if input_file_name.find(".concept") == -1:
                 continue
             input_file_path = os.path.join(path, input_file_name)
 
-            annotation_file = get_fda_file(input_file_path)
+            with codecs.open(input_file_path, 'r', 'UTF-8') as fp:
+                for line in fp:
+                    line = line.strip()
+                    tokens = re.split(r"\|\|", line)
+                    conceptName = tokens[3].lower().strip()
+                    cuis = re.split(r"\+", tokens[4]) if tokens[4].find("+") != -1 else re.split(r"\|", tokens[4])
+                    MeSHorSNOMEDcuis = Terminology.getMeSHorSNOMEDCuis(cuis)
+                    if MeSHorSNOMEDcuis != u"":
+                        self.loadMaps(conceptName, MeSHorSNOMEDcuis)
+                    self.setOMIM(tokens[4], MeSHorSNOMEDcuis, conceptName)
 
-            for mention in annotation_file.mentions:
-                for idx, norm_id in enumerate(mention.norm_ids):
-
-                    conceptName = mention.norm_names[idx].lower().strip()
-
-                    self.loadMaps(conceptName, norm_id)
-
-                    cui = norm_id
+                    cui = MeSHorSNOMEDcuis if MeSHorSNOMEDcuis != u"" else tokens[4].replace(u"OMIM:", u"")
 
                     simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
                     for simpleConceptName in simpleConceptNames:
                         self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
 
-    def loadTAC2017Terminology(self, path):
-        for input_file_name in os.listdir(path):
-            if input_file_name.find(".xml") == -1:
+
+
+    # for NCBI data, 得到Mesh ID，去除mention的OMIM ID
+    @classmethod
+    def getMeSHorSNOMEDCuis(self, cuis):
+        cuiStr = u""
+        for cui in cuis:
+            if cui.find(u"OMIM") != -1:
                 continue
-            input_file_path = os.path.join(path, input_file_name)
+            cuiStr = cui if cuiStr == u"" else cuiStr+u"|"+cui
 
-            annotation_file = get_fda_file(input_file_path)
-
-            for reaction in annotation_file.reactions:
-
-                for normalization in reaction.normalizations:
-
-                    if normalization.meddra_pt_id is not None:
-
-                        conceptName = normalization.meddra_pt.lower().strip()
-
-                        self.loadMaps(conceptName, normalization.meddra_pt_id)
-
-                        cui = normalization.meddra_pt_id
-
-                        simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
-                        for simpleConceptName in simpleConceptNames:
-                            self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
+        return cuiStr
 
     @classmethod
     def getOMIMCuis(self, cuis):
@@ -682,6 +710,52 @@ class Concept:
         self.stemmedNamesKnowledgeBase = Util.addUnique(self.stemmedNamesKnowledgeBase, namesList)
 
 
+
+
+class DocumentConcepts:
+    def __init__(self, filename, text):
+        self.filename = filename
+        self.text = text
+        self.concepts = list()
+
+    def setConcept(self, tokens, abbreviationObject):
+
+        cuis = re.split(r"\+", tokens[4]) if tokens[4].find("+") != -1 else re.split(r"\|", tokens[4])
+        MeSHorSNOMEDcuis = Terminology.getMeSHorSNOMEDCuis(cuis)
+        OMIMcuis = Terminology.getOMIMCuis(cuis)
+        concept = Concept(tokens[1], tokens[3], MeSHorSNOMEDcuis, OMIMcuis)
+        concept.setNameExpansion(self.text, abbreviationObject)
+        concept.setStemmedName()
+        self.concepts.append(concept)
+
+    def getConcepts(self):
+        return self.concepts
+
+
+
+class Documents:
+    @classmethod
+    def getDataSet(self, path):
+
+        dataset = list()
+        for input_file_name in os.listdir(path):
+            if input_file_name.find(".concept") == -1:
+                continue
+            input_file_path = os.path.join(path, input_file_name)
+            textFile = input_file_path.replace(".concept", ".txt")
+            abbreviationObject = Abbreviation()
+            abbreviationObject.setTextAbbreviationExpansionMap(textFile)
+            documentConceptsObject = DocumentConcepts(textFile, Util.read(textFile))
+            with codecs.open(input_file_path, 'r', 'UTF-8') as fp:
+                for line in fp:
+                    line = line.strip()
+                    tokens = re.split(r"\|\|", line)
+                    documentConceptsObject.setConcept(tokens, abbreviationObject)
+            dataset.append(documentConceptsObject)
+
+        return dataset
+
+
 class Evaluation:
     totalNames = 0
     tp = 0
@@ -690,9 +764,9 @@ class Evaluation:
     map_whichSieveFires = dict()
 
     @classmethod
-    def initialize(self, data):
+    def initialize(self, opt):
 
-        for i in range(int(data.config['norm_rule_num'])+1):
+        for i in range(opt.max_sieve+1):
             Evaluation.map_whichSieveFires[i] = 0
 
 
@@ -781,6 +855,47 @@ class Evaluation:
 
 
 
+
+
+
+
+class AmbiguityResolution:
+    @classmethod
+    def start(self, concepts, cuiNamesMap):
+        for concept in concepts.getConcepts():
+            if concept.getNormalizingSieve() != 1 or concept.getCui() == u"CUI-less":
+                Evaluation.evaluateClassification(concept, concepts)
+                continue
+
+            conceptName = concept.getName()
+            conceptNameTokens = re.split(r"\s+", conceptName)
+
+            trainingDataCuis = Sieve.getTrainingDataTerminology().getNameToCuiListMap().get(conceptName) \
+                if conceptName in Sieve.getTrainingDataTerminology().getNameToCuiListMap() else None
+
+            if trainingDataCuis is None or len(trainingDataCuis) == 1:
+                Evaluation.evaluateClassification(concept, concepts)
+                continue
+
+            if len(conceptNameTokens) > 1:
+                concept.setCui(u"CUI-less")
+            else:
+                countCUIMatch = 0
+                for cui in trainingDataCuis:
+                    names = cuiNamesMap.get(cui) if cui in cuiNamesMap else list()
+                    for name in names:
+                        nameTokens = re.split(r"\s+", name)
+                        if len(nameTokens) == 1:
+                            continue
+                        if re.match(conceptName+r" .*", name):
+                            countCUIMatch += 1
+
+
+
+                if countCUIMatch > 0:
+                    concept.setCui(u"CUI-less")
+
+            Evaluation.evaluateClassification(concept, concepts)
 
 
 class MultiPassSieveNormalizer:
@@ -878,8 +993,6 @@ class MultiPassSieveNormalizer:
 class Sieve:
     standardTerminology = Terminology()
     trainingDataTerminology = Terminology()
-    tac2017Terminology = Terminology()
-    use_tac2017Terminology = False
 
     @classmethod
     def setStandardTerminology(self, dict_path):
@@ -890,11 +1003,6 @@ class Sieve:
         Sieve.trainingDataTerminology.loadTrainingDataTerminology(train_path)
 
     @classmethod
-    def setTAC2017Terminology(self, train_path):
-        Sieve.tac2017Terminology.loadTAC2017Terminology(train_path)
-        Sieve.use_tac2017Terminology = True
-
-    @classmethod
     def getAlternateCuis(self, cui):
         alternateCuis = list()
         if cui in Sieve.trainingDataTerminology.getCuiAlternateCuiMap():
@@ -902,10 +1010,6 @@ class Sieve:
 
         if cui in Sieve.standardTerminology.getCuiAlternateCuiMap():
             alternateCuis.extend(Sieve.standardTerminology.getCuiAlternateCuiMap().get(cui))
-
-        if Sieve.use_tac2017Terminology:
-            if cui in Sieve.tac2017Terminology.getCuiAlternateCuiMap():
-                alternateCuis.extend(Sieve.tac2017Terminology.getCuiAlternateCuiMap().get(cui))
 
         return alternateCuis
 
@@ -923,25 +1027,11 @@ class Sieve:
             return cui
 
         # check against names in the dictionary
-        cui = Sieve.getTerminologyNameCui(Sieve.standardTerminology.getNameToCuiListMap(), name)
-        if cui != u"":
-            return cui
-
-        if Sieve.use_tac2017Terminology:
-            cui = Sieve.getTerminologyNameCui(Sieve.tac2017Terminology.getNameToCuiListMap(), name)
-            if cui != u"":
-                return cui
-
-        return cui
-
+        return Sieve.getTerminologyNameCui(Sieve.standardTerminology.getNameToCuiListMap(), name)
 
     @classmethod
     def getTrainingDataTerminology(self):
         return Sieve.trainingDataTerminology
-
-    @classmethod
-    def getTAC2017Terminology(self):
-        return Sieve.tac2017Terminology
 
     @classmethod
     def normalize(self, namesKnowledgeBase):
@@ -1375,17 +1465,7 @@ class StemmingSieve(Sieve):
 
         # checks against names in dictionary
         cui = Sieve.getTerminologyNameCui(Sieve.getStandardTerminology().getStemmedNameToCuiListMap(), name)
-        if cui != u"":
-            return cui
-
-        if Sieve.use_tac2017Terminology:
-            cui = Sieve.getTerminologyNameCui(Sieve.getTAC2017Terminology().getStemmedNameToCuiListMap(), name)
-            if cui != u"":
-                return cui
-
         return cui
-
-
 
 
 class CompoundPhraseSieve(Sieve):
@@ -1416,22 +1496,12 @@ class CompoundPhraseSieve(Sieve):
 
     @classmethod
     def apply(self, name):
-        cui = u""
-
         cui = Sieve.getTerminologyNameCui(Sieve.getTrainingDataTerminology().getCompoundNameToCuiListMap(), name)
         if cui != u"":
             return cui
 
-        cui = Sieve.getTerminologyNameCui(Sieve.getStandardTerminology().getCompoundNameToCuiListMap(), name)
-        if cui != u"":
-            return cui
+        return Sieve.getTerminologyNameCui(Sieve.getStandardTerminology().getCompoundNameToCuiListMap(), name)
 
-        if Sieve.use_tac2017Terminology:
-            cui = Sieve.getTerminologyNameCui(Sieve.getTAC2017Terminology().getCompoundNameToCuiListMap(), name)
-            if cui != u"":
-                return cui
-
-        return cui
 
 
 class SimpleNameSieve(Sieve):
@@ -1486,18 +1556,7 @@ class SimpleNameSieve(Sieve):
 
     @classmethod
     def normalize(self, name):
-        cui = u""
-
-        cui = Sieve.getTerminologyNameCui(Sieve.getTrainingDataTerminology().getSimpleNameToCuiListMap(), name)
-        if cui != u"":
-            return cui
-
-        if Sieve.use_tac2017Terminology:
-            cui = Sieve.getTerminologyNameCui(Sieve.getTAC2017Terminology().getSimpleNameToCuiListMap(), name)
-            if cui != u"":
-                return cui
-
-        return cui
+        return Sieve.getTerminologyNameCui(Sieve.getTrainingDataTerminology().getSimpleNameToCuiListMap(), name)
 
 
 class PartialMatchNCBISieve:
@@ -1617,57 +1676,60 @@ def makedir_and_clear(dir_path):
     else:
         os.makedirs(dir_path)
 
-def init(opt, data):
+def init(opt):
+    # training_data_dir = opt.train
+    # test_data_dir = opt.test
+    # terminologyFile = opt.dict
 
-    Ling.setStopwordsList(os.path.join(data.config['norm_rule_resource'], 'stopwords.txt'))
-    Abbreviation.setWikiAbbreviationExpansionMap(os.path.join(data.config['norm_rule_resource'], 'ncbi-wiki-abbreviations.txt'))
-    Ling.setDigitToWordformMapAndReverse(os.path.join(data.config['norm_rule_resource'], 'number.txt'))
-    Ling.setSuffixMap(os.path.join(data.config['norm_rule_resource'], 'suffix.txt'))
-    Ling.setPrefixMap(os.path.join(data.config['norm_rule_resource'], 'prefix.txt'))
-    Ling.setAffixMap(os.path.join(data.config['norm_rule_resource'], 'affix.txt'))
-
-
-    MultiPassSieveNormalizer.maxSieveLevel = int(data.config['norm_rule_num'])
-
-    Evaluation.initialize(data)
-
-    Sieve.setStandardTerminology(data.config['norm_rule_dict'])
-
-    Sieve.setTrainingDataTerminology(opt.train_file)
-
-    # external corpus
-    if data.config.get('norm_rule_ext_corpus') is not None:
-        for k, v in data.config['norm_rule_ext_corpus'].items():
-            if k == 'tac':
-                Sieve.setTAC2017Terminology(v['path'])
+    Ling.setStopwordsList(os.path.join(opt.resource, 'stopwords.txt'))
+    Abbreviation.setWikiAbbreviationExpansionMap(os.path.join(opt.resource, 'ncbi-wiki-abbreviations.txt'))
+    Ling.setDigitToWordformMapAndReverse(os.path.join(opt.resource, 'number.txt'))
+    Ling.setSuffixMap(os.path.join(opt.resource, 'suffix.txt'))
+    Ling.setPrefixMap(os.path.join(opt.resource, 'prefix.txt'))
+    Ling.setAffixMap(os.path.join(opt.resource, 'affix.txt'))
 
 
-def runMultiPassSieve(document, entities, meddra_dict):
+    MultiPassSieveNormalizer.maxSieveLevel = opt.max_sieve
 
-    concepts = list()
+    Evaluation.initialize(opt)
 
-    abbreviationObject = Abbreviation()
-    abbreviationObject.setTextAbbreviationExpansionMap(document.text)
+def runMultiPassSieve(opt):
+    Sieve.setStandardTerminology(opt.dict)
+    Sieve.setTrainingDataTerminology(opt.train)
 
-    for entity in entities:
-        concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
-        concept.setNameExpansion(document.text, abbreviationObject)
-        concept.setStemmedName()
-        concepts.append(concept)
+    dataset = Documents.getDataSet(opt.test)
+    for concepts in dataset:
+        cuiNamesMap = dict()
+        for concept in  concepts.getConcepts():
+            MultiPassSieveNormalizer.applyMultiPassSieve(concept)
+            if concept.getCui() == u"":
+                concept.setCui(u"CUI-less")
 
-        MultiPassSieveNormalizer.applyMultiPassSieve(concept)
-        if concept.getCui() == u"":
-            concept.setCui(u"CUI-less")
+            cuiNamesMap = Util.setMap(cuiNamesMap, concept.getCui(), concept.getName())
 
-
-    # fill norm name and id into entity
-    for idx, entity in enumerate(entities):
-        id = concepts[idx].getCui()
-        if id != u"CUI-less":
-            name = meddra_dict[id]
-            entity.norm_ids.append(id)
-            entity.norm_names.append(name)
+        AmbiguityResolution.start(concepts, cuiNamesMap)
 
 
-def finalize():
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-train', default='/Users/feili/project/disorder-normalizer/ncbi-data/training')
+    parser.add_argument('-test', default='/Users/feili/project/disorder-normalizer/ncbi-data/test')
+    parser.add_argument('-output', default='/Users/feili/project/disorder-normalizer/ncbi-data/output')
+    parser.add_argument('-dict', default='/Users/feili/project/disorder-normalizer/ncbi-data/TERMINOLOGY.txt')
+    parser.add_argument('-resource', default='/Users/feili/project/disorder-normalizer/resources')
+    parser.add_argument('-max_sieve', type=int, default=1)
+
+    opt = parser.parse_args()
+
+    init(opt)
+
+
+
+    makedir_and_clear(opt.output)
+
+    runMultiPassSieve(opt)
+
     shutdownJVM()
+
+    Evaluation.computeAccuracy()
+    Evaluation.printResults()

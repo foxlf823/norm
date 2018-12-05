@@ -380,6 +380,7 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, ty
     for section in annotation_file.sections:
         document = Document()
         document.name = fileName[:fileName.find('.')]+"_"+section.id
+        document.text = section.text
 
         entities = []
 
@@ -827,60 +828,91 @@ class Data:
         config = config_file_to_dict(config_file)
         return config
 
-
-
 def config_file_to_dict(input_file):
     config = {}
     fins = open(input_file, 'r').readlines()
     for line in fins:
+        line = line.strip()
+        if line == '':
+            continue
         if len(line) > 0 and line[0] == "#":
             continue
-        if "=" in line:
-            pair = line.strip().split('#', 1)[0].split('=', 1)
-            item = pair[0]
-            if item == "ner_feature":
-                if item not in config:
-                    feat_dict = {}
-                    config[item] = feat_dict
-                feat_dict = config[item]
-                new_pair = pair[-1].split()
-                feat_name = new_pair[0]
-                one_dict = {}
-                one_dict["emb_dir"] = None
-                one_dict["emb_size"] = 10
-                one_dict["emb_norm"] = False
-                if len(new_pair) > 1:
-                    for idx in range(1, len(new_pair)):
-                        conf_pair = new_pair[idx].split('=')
-                        if conf_pair[0] == "emb_dir":
-                            one_dict["emb_dir"] = conf_pair[-1]
-                        elif conf_pair[0] == "emb_size":
-                            one_dict["emb_size"] = int(conf_pair[-1])
-                        elif conf_pair[0] == "emb_norm":
-                            one_dict["emb_norm"] = str2bool(conf_pair[-1])
-                feat_dict[feat_name] = one_dict
-                # print "feat",feat_dict
-            elif item == "ext_corpus":
-                if item not in config:
-                    feat_dict = {}
-                    config[item] = feat_dict
-                feat_dict = config[item]
-                new_pair = pair[-1].split()
-                feat_name = new_pair[0]
-                one_dict = {}
-                if len(new_pair) > 1:
-                    for idx in range(1, len(new_pair)):
-                        conf_pair = new_pair[idx].split('=')
-                        if conf_pair[0] == 'types':
-                            one_dict[conf_pair[0]] = set(conf_pair[1].split(','))
-                        else:
-                            one_dict[conf_pair[0]] = conf_pair[1]
-                feat_dict[feat_name] = one_dict
-            else:
-                if item in config:
-                    print("Warning: duplicated config item found: %s, updated." % (pair[0]))
-                config[item] = pair[-1]
+
+        pairs = line.split()
+        if len(pairs) > 1:
+            for idx, pair in enumerate(pairs):
+                if idx == 0:
+                    items = pair.split('=')
+                    if items[0] not in config:
+                        feat_dict = {}
+                        config[items[0]] = feat_dict
+                    feat_dict = config[items[0]]
+                    feat_name = items[1]
+                    one_dict = {}
+                    feat_dict[feat_name] = one_dict
+                else:
+                    items = pair.split('=')
+                    one_dict[items[0]] = items[1]
+        else:
+            items = pairs[0].split('=')
+            if items[0] in config:
+                print("Warning: duplicated config item found: %s, updated." % (items[0]))
+            config[items[0]] = items[-1]
+
     return config
+
+# def config_file_to_dict(input_file):
+#     config = {}
+#     fins = open(input_file, 'r').readlines()
+#     for line in fins:
+#         if len(line) > 0 and line[0] == "#":
+#             continue
+#         if "=" in line:
+#             pair = line.strip().split('#', 1)[0].split('=', 1)
+#             item = pair[0]
+#             if item == "ner_feature":
+#                 if item not in config:
+#                     feat_dict = {}
+#                     config[item] = feat_dict
+#                 feat_dict = config[item]
+#                 new_pair = pair[-1].split()
+#                 feat_name = new_pair[0]
+#                 one_dict = {}
+#                 one_dict["emb_dir"] = None
+#                 one_dict["emb_size"] = 10
+#                 one_dict["emb_norm"] = False
+#                 if len(new_pair) > 1:
+#                     for idx in range(1, len(new_pair)):
+#                         conf_pair = new_pair[idx].split('=')
+#                         if conf_pair[0] == "emb_dir":
+#                             one_dict["emb_dir"] = conf_pair[-1]
+#                         elif conf_pair[0] == "emb_size":
+#                             one_dict["emb_size"] = int(conf_pair[-1])
+#                         elif conf_pair[0] == "emb_norm":
+#                             one_dict["emb_norm"] = str2bool(conf_pair[-1])
+#                 feat_dict[feat_name] = one_dict
+#                 # print "feat",feat_dict
+#             elif item == "ext_corpus":
+#                 if item not in config:
+#                     feat_dict = {}
+#                     config[item] = feat_dict
+#                 feat_dict = config[item]
+#                 new_pair = pair[-1].split()
+#                 feat_name = new_pair[0]
+#                 one_dict = {}
+#                 if len(new_pair) > 1:
+#                     for idx in range(1, len(new_pair)):
+#                         conf_pair = new_pair[idx].split('=')
+#                         if conf_pair[0] == 'types':
+#                             one_dict[conf_pair[0]] = set(conf_pair[1].split(','))
+#                         else:
+#                             one_dict[conf_pair[0]] = conf_pair[1]
+#                 feat_dict[feat_name] = one_dict
+#             else:
+#                 if item in config:
+#                     print("Warning: duplicated config item found: %s, updated." % (pair[0]))
+#                 config[item] = pair[-1]
+#     return config
 
 def str2bool(string):
     if string == "True" or string == "true" or string == "TRUE":

@@ -12,6 +12,9 @@ class FdaXmlHandler( xml.sax.ContentHandler ):
         self.ignore_regions = []
         self.mentions = []
 
+        # for tac 2017
+        self.reactions = []
+
     def startDocument(self):
         pass
 
@@ -47,6 +50,32 @@ class FdaXmlHandler( xml.sax.ContentHandler ):
             for i, _ in enumerate(splitted_start):
                 mention.spans.append([int(splitted_start[i]), int(splitted_start[i])+int(splitted_len[i])])
             self.mentions.append(mention)
+        elif len(self.parentTag) > 0 and self.parentTag[-1] == 'Mention' and tag == 'Normalization': # for fda 2018
+            current_mention = self.mentions[-1]
+            meddra_pt_id = attributes.get('meddra_pt_id').strip() if attributes.get('meddra_pt_id') is not None else ''
+            if meddra_pt_id != '':
+                current_mention.norm_ids.append(attributes['meddra_pt_id'])
+                current_mention.norm_names.append(attributes['meddra_pt'])
+        elif tag == 'Reaction':
+            reaction = data_structure.Reaction()
+            reaction.id = attributes['id']
+            reaction.name = attributes['str']
+            self.reactions.append(reaction)
+        elif len(self.parentTag) > 0 and self.parentTag[-1] == 'Reaction' and tag == 'Normalization': # for tac 2017
+            current_reaction = self.reactions[-1]
+            normalization = data_structure.Normalization()
+            normalization.id = attributes['id']
+            meddra_pt_id = attributes.get('meddra_pt_id').strip() if attributes.get('meddra_pt_id') is not None else ''
+            if meddra_pt_id != '':
+                normalization.meddra_pt =  attributes['meddra_pt']
+                normalization.meddra_pt_id = attributes['meddra_pt_id']
+                meddra_llt_id = attributes.get('meddra_llt_id').strip() if attributes.get('meddra_llt_id') is not None else ''
+            if meddra_llt_id != '':
+                normalization.meddra_llt = attributes['meddra_llt']
+                normalization.meddra_llt_id = attributes['meddra_llt_id']
+            current_reaction.normalizations.append(normalization)
+
+
 
     def endElement(self, tag):
         if len(self.parentTag) != 0:

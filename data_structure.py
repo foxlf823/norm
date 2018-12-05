@@ -7,9 +7,11 @@ class Entity:
         self.spans = [] # a couple of spans, list (start, end)
         self.tkSpans = []
         self.labelSpans = []
+        self.name = None
 
         self.sent_idx = None
-        self.norm_id = None
+        self.norm_ids = []
+        self.norm_names = []
 
         # for FDA challenge
         self.section = None
@@ -83,6 +85,7 @@ class Document:
         self.entities = None
         self.sentences = None
         self.name = None
+        self.text = None
 
 
 # used for FDA challenge
@@ -98,6 +101,21 @@ class IgnoredRegion:
         self.section = None
         self.start = None
         self.end = None
+
+# for tac 2017
+class Reaction:
+    def __init__(self):
+        self.id = None
+        self.name = None
+        self.normalizations = []
+
+class Normalization:
+    def __init__(self):
+        self.id = None
+        self.meddra_pt = None
+        self.meddra_pt_id = None
+        self.meddra_llt = None
+        self.meddra_llt_id = None
 
 
 

@@ -5,4 +5,7 @@ ner_feature=[Cap] emb_size=10
 #ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml_debug types=AdverseReaction
 #elmo_path=/Users/feili/resource/data_to_train_emb/elmo_ade_lower_0norm_200d
 elmo_path=/Users/feili/project/ELMoForManyLangs/output/en
-
+norm_rule_dict=/Users/feili/PycharmProjects/norm/meddra_dict.txt
+norm_rule_resource=/Users/feili/project/disorder-normalizer/resources
+norm_rule_num=100
+norm_rule_ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml_debug

@@ -10,6 +10,8 @@ from metric import get_ner_BIOHD_1234
 from data_structure import Entity
 import xml.dom
 import codecs
+import multi_sieve
+import re
 
 def span_to_start(entity):
     ret = ""
@@ -62,7 +64,28 @@ def dump_results(doc_name, entities, opt, annotation_file):
         xml_Mention.setAttribute('section', entity.section)
         xml_Mention.setAttribute('start', span_to_start(entity))
         xml_Mention.setAttribute('type', 'OSE_Labeled_AE')
+
+        if len(entity.norm_ids) == 0:
+            xml_Normalization = doc.createElement('Normalization')
+            xml_Normalization.setAttribute('meddra_pt', '')
+            xml_Normalization.setAttribute('meddra_pt_id', '')
+            xml_Mention.appendChild(xml_Normalization)
+        else:
+            for idx, norm_id in enumerate(entity.norm_ids):
+                norm_name = entity.norm_names[idx]
+                xml_Normalization = doc.createElement('Normalization')
+                xml_Normalization.setAttribute('meddra_pt', norm_name)
+                xml_Normalization.setAttribute('meddra_pt_id', norm_id)
+                xml_Mention.appendChild(xml_Normalization)
+
         xml_Mentions.appendChild(xml_Mention)
+
+
+
+
+
+
+
 
     with codecs.open(os.path.join(opt.predict, doc_name), 'w', 'UTF-8') as fp:
         doc.writexml(fp, addindent=' ' * 2, newl='\n', encoding='UTF-8')
@@ -99,12 +122,15 @@ def translateResultsintoEntities(sentences, predict_results):
 
         entities = get_ner_BIOHD_1234(predict_list, False)
 
-        # find span based on tkSpan
+        # find span based on tkSpan, fill name
         for entity in entities:
+            name = ''
             for tkSpan in entity.tkSpans:
                 span = [sentence[tkSpan[0]]['start'], sentence[tkSpan[1]]['end']]
                 entity.spans.append(span)
-
+                for i in range(tkSpan[0], tkSpan[1]+1):
+                    name += sentence[i]['text'] + ' '
+            entity.name = name.strip()
 
         pred_entities.extend(entities)
 
@@ -128,6 +154,22 @@ def test(data, opt):
             torch.load(os.path.join(opt.output, 'model.pkl'), map_location='cpu'))
     else:
         model.load_state_dict(torch.load(os.path.join(opt.output, 'model.pkl')))
+
+    # initialize norm models
+    if opt.norm_rule and opt.norm_vsm and opt.norm_neural: # ensemble
+        logging.info("initialize the ensemble normalization model ...")
+
+    elif opt.norm_rule:
+        logging.info("initialize the rule-based normalization model ...")
+        multi_sieve.init(opt, data)
+        meddra_dict = load_meddra_dict(data)
+    elif opt.norm_vsm:
+        logging.info("initialize the vsm-based normalization model ...")
+    elif opt.norm_neural:
+        logging.info("initialize the neural-based normalization model ...")
+    else:
+        logging.info("no normalization is performed.")
+
 
     makedir_and_clear(opt.predict)
 
@@ -155,6 +197,17 @@ def test(data, opt):
                 section_id = section.name[section.name.rfind('_')+1: ]
                 entities = remove_entity_in_the_ignore_region(annotation_file.ignore_regions, entities, section_id)
 
+
+                if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
+                    pass
+
+                elif opt.norm_rule:
+                    multi_sieve.runMultiPassSieve(section, entities, meddra_dict)
+                elif opt.norm_vsm:
+                    pass
+                elif opt.norm_neural:
+                    pass
+
                 pred_entities.extend(entities)
 
 
@@ -168,4 +221,35 @@ def test(data, opt):
             logging.error("process file {} error: {}".format(fileName, e))
             ct_error += 1
 
+    if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
+        pass
+
+    elif opt.norm_rule:
+        multi_sieve.finalize()
+    elif opt.norm_vsm:
+        pass
+    elif opt.norm_neural:
+        pass
+
     logging.info("test finished, total {}, error {}".format(ct_success + ct_error, ct_error))
+
+
+def load_meddra_dict(data):
+    input_path = data.config['norm_rule_dict']
+
+    map_id_to_name = dict()
+
+    with codecs.open(input_path, 'r', 'UTF-8') as fp:
+        for line in fp:
+            line = line.strip()
+            if line == u'':
+                continue
+            token = re.split(r"\|\|", line)
+            cui = token[0]
+
+            conceptNames = token[1]
+
+            map_id_to_name[cui] = conceptNames
+
+
+    return map_id_to_name
