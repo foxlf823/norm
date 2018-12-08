@@ -69,7 +69,7 @@ class FdaXmlHandler( xml.sax.ContentHandler ):
             if meddra_pt_id != '':
                 normalization.meddra_pt =  attributes['meddra_pt']
                 normalization.meddra_pt_id = attributes['meddra_pt_id']
-                meddra_llt_id = attributes.get('meddra_llt_id').strip() if attributes.get('meddra_llt_id') is not None else ''
+            meddra_llt_id = attributes.get('meddra_llt_id').strip() if attributes.get('meddra_llt_id') is not None else ''
             if meddra_llt_id != '':
                 normalization.meddra_llt = attributes['meddra_llt']
                 normalization.meddra_llt_id = attributes['meddra_llt_id']

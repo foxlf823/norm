@@ -5,7 +5,7 @@ import pickle as pk
 from os import listdir
 from os.path import isfile, join
 from my_utils import get_bioc_file, get_text_file, normalize_word, is_overlapped
-import spacy
+# import spacy
 from data_structure import Entity, Document
 from options import opt
 import logging
@@ -615,8 +615,12 @@ def _readString(f, code):
             raise RuntimeError("not valid utf-8 code")
 
         i = 0
-        temp = str()
+        # temp = str()
+        # temp = temp + c
+
+        temp = bytes()
         temp = temp + c
+
         while i<continue_to_read:
             temp = temp + f.read(1)
             i += 1

@@ -30,6 +30,7 @@ def dump_results(doc_name, entities, opt, annotation_file):
     dom1 = xml.dom.getDOMImplementation()
     doc = dom1.createDocument(None, "SubmissionLabel", None)
     xml_SubmissionLabel = doc.documentElement
+    xml_SubmissionLabel.setAttribute('drug', doc_name[:doc_name.find(".xml")])
 
     xml_Text = doc.createElement('Text')
     xml_SubmissionLabel.appendChild(xml_Text)
@@ -165,6 +166,7 @@ def test(data, opt):
         meddra_dict = load_meddra_dict(data)
     elif opt.norm_vsm:
         logging.info("initialize the vsm-based normalization model ...")
+        meddra_dict = load_meddra_dict(data)
     elif opt.norm_neural:
         logging.info("initialize the neural-based normalization model ...")
     else:
@@ -208,7 +210,9 @@ def test(data, opt):
                 elif opt.norm_neural:
                     pass
 
-                pred_entities.extend(entities)
+                for entity in entities:
+                    if len(entity.norm_ids)!=0: # if a mention can't be normed, not output it
+                        pred_entities.append(entity)
 
 
             dump_results(fileName, pred_entities, opt, annotation_file)

@@ -7,7 +7,6 @@ import logging
 from options import opt
 import data
 import train
-import test
 from my_utils import makedir_and_clear
 import test_fda
 

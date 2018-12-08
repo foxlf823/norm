@@ -15,21 +15,10 @@ from options import opt
 import numpy as np
 import random
 
+
+
 def batchify_with_label(data, input_batch_list, input_batch_list_text, gpu):
-    """
-        input: list of words, chars and labels, various length. [[words,chars, labels],[words,chars,labels],...]
-            words: word ids for one sentence. (batch_size, sent_len)
-            chars: char ids for on sentences, various length. (batch_size, sent_len, each_word_length)
-        output:
-            zero padding for word and char, with their batch length
-            word_seq_tensor: (batch_size, max_sent_len) Variable
-            word_seq_lengths: (batch_size,1) Tensor
-            char_seq_tensor: (batch_size*max_sent_len, max_word_len) Variable
-            char_seq_lengths: (batch_size*max_sent_len,1) Tensor
-            char_seq_recover: (batch_size*max_sent_len,1)  recover char sequence order
-            label_seq_tensor: (batch_size, max_sent_len)
-            mask: (batch_size, max_sent_len)
-    """
+
     with torch.no_grad(): # feili, compatible with 0.4
         batch_size = len(input_batch_list)
         words = [sent[0] for sent in input_batch_list]

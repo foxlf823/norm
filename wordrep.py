@@ -21,8 +21,8 @@ class WordRep(nn.Module):
             logging.info("use elmo, loading ...")
             self.use_elmo = True
             self.elmo = Embedder(data.config['elmo_path'])
-            # we project the elmo representation to the same dim of word embedding
-            self.elmo_projection = nn.Linear(self.elmo.config['encoder']['projection_dim']*2, data.word_emb_dim, False)
+            # we project the elmo representation to the same dim of char embedding
+            self.elmo_projection = nn.Linear(self.elmo.config['encoder']['projection_dim']*2, opt.char_hidden_dim, False)
             self.elmo_drop = nn.Dropout(opt.dropout)
         else:
             self.char_hidden_dim = opt.char_hidden_dim

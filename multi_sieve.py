@@ -6,6 +6,7 @@ import re
 import shutil
 from jpype import *
 from data import get_fda_file
+import logging
 
 class Util:
     @classmethod
@@ -246,6 +247,7 @@ class Ling:
     suffixMap = dict()
     prefixMap = dict()
     affixMap = dict()
+    logging.info("JVM class path {}".format(os.path.abspath(".")))
     startJVM(getDefaultJVMPath(), "-ea", "-Dfile.encoding=UTF-8", "-Djava.class.path={}".format(os.path.abspath(".")))
     PorterStemmer = JClass("PorterStemmer")
     AFFIX = u"ganglioma|cancer"

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 from wordsequence import WordSequence
 from crf import CRF
+import logging
 
 class SeqModel(nn.Module):
     def __init__(self, data, opt):
@@ -20,13 +21,16 @@ class SeqModel(nn.Module):
 
 
     def neg_log_likelihood_loss(self, word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, batch_label, mask, feature_inputs, text_inputs):
+
         outs = self.word_hidden(word_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, feature_inputs, text_inputs)
         batch_size = word_inputs.size(0)
 
         total_loss = self.crf.neg_log_likelihood_loss(outs, mask, batch_label)
+
         scores, tag_seq = self.crf._viterbi_decode(outs, mask)
 
         total_loss = total_loss / batch_size
+
         return total_loss, tag_seq
 
 

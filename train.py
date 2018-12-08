@@ -14,6 +14,7 @@ from my_utils import batchify_with_label, evaluate
 
 
 def train(data, opt, fold_idx):
+
     model = SeqModel(data, opt)
 
     optimizer = optim.Adam(model.parameters(), lr=opt.lr, weight_decay=opt.l2)
@@ -63,6 +64,7 @@ def train(data, opt, fold_idx):
                                                           batch_charlen, batch_charrecover, batch_label, mask, batch_features, batch_text)
 
             loss.backward()
+
             if opt.gradient_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), opt.gradient_clip)
             optimizer.step()

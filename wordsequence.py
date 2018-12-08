@@ -18,10 +18,7 @@ class WordSequence(nn.Module):
         self.wordrep = WordRep(data, opt)
         self.input_size = data.word_emb_dim
 
-        if opt.elmo:
-            self.input_size += data.word_emb_dim
-        else :
-            self.input_size += opt.char_hidden_dim
+        self.input_size += opt.char_hidden_dim
 
         if data.feat_config is not None:
             for idx in range(len(data.feature_emb_dims)):
