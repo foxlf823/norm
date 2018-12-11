@@ -7,6 +7,7 @@ import shutil
 from jpype import *
 from data import get_fda_file
 import logging
+from data_structure import Entity
 
 class Util:
     @classmethod
@@ -544,7 +545,26 @@ class Terminology:
 
                 self.loadMaps(conceptNames, cui)
 
-    def loadTrainingDataTerminology(self, path):
+    def loadTrainingDataTerminology(self, documents):
+
+        for document in documents:
+
+            for mention in document.entities:
+
+                conceptName = mention.name.lower().strip()
+                for idx, norm_id in enumerate(mention.norm_ids):
+
+                    # conceptName = mention.norm_names[idx].lower().strip()
+
+                    self.loadMaps(conceptName, norm_id)
+
+                    cui = norm_id
+
+                    simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
+                    for simpleConceptName in simpleConceptNames:
+                        self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
+
+    def loadTrainingDataTerminology_frompath(self, path):
 
         for input_file_name in os.listdir(path):
             if input_file_name.find(".xml") == -1:
@@ -554,9 +574,10 @@ class Terminology:
             annotation_file = get_fda_file(input_file_path)
 
             for mention in annotation_file.mentions:
+                conceptName = mention.name.lower().strip()
                 for idx, norm_id in enumerate(mention.norm_ids):
 
-                    conceptName = mention.norm_names[idx].lower().strip()
+                    # conceptName = mention.norm_names[idx].lower().strip()
 
                     self.loadMaps(conceptName, norm_id)
 
@@ -576,11 +597,13 @@ class Terminology:
 
             for reaction in annotation_file.reactions:
 
+                conceptName = reaction.name.lower().strip()
+
                 for normalization in reaction.normalizations:
 
                     if normalization.meddra_pt_id is not None:
 
-                        conceptName = normalization.meddra_pt.lower().strip()
+                        # conceptName = normalization.meddra_pt.lower().strip()
 
                         self.loadMaps(conceptName, normalization.meddra_pt_id)
 
@@ -890,6 +913,10 @@ class Sieve:
     @classmethod
     def setTrainingDataTerminology(self, train_path):
         Sieve.trainingDataTerminology.loadTrainingDataTerminology(train_path)
+
+    @classmethod
+    def setTrainingDataTerminology_frompath(self, train_path):
+        Sieve.trainingDataTerminology.loadTrainingDataTerminology_frompath(train_path)
 
     @classmethod
     def setTAC2017Terminology(self, train_path):
@@ -1619,29 +1646,36 @@ def makedir_and_clear(dir_path):
     else:
         os.makedirs(dir_path)
 
-def init(opt, data):
+def init(opt, train_data, d):
+    logging.info("initialize the rule-based normalization model ...")
 
-    Ling.setStopwordsList(os.path.join(data.config['norm_rule_resource'], 'stopwords.txt'))
-    Abbreviation.setWikiAbbreviationExpansionMap(os.path.join(data.config['norm_rule_resource'], 'ncbi-wiki-abbreviations.txt'))
-    Ling.setDigitToWordformMapAndReverse(os.path.join(data.config['norm_rule_resource'], 'number.txt'))
-    Ling.setSuffixMap(os.path.join(data.config['norm_rule_resource'], 'suffix.txt'))
-    Ling.setPrefixMap(os.path.join(data.config['norm_rule_resource'], 'prefix.txt'))
-    Ling.setAffixMap(os.path.join(data.config['norm_rule_resource'], 'affix.txt'))
+    Ling.setStopwordsList(os.path.join(d.config['norm_rule_resource'], 'stopwords.txt'))
+    Abbreviation.setWikiAbbreviationExpansionMap(os.path.join(d.config['norm_rule_resource'], 'ncbi-wiki-abbreviations.txt'))
+    Ling.setDigitToWordformMapAndReverse(os.path.join(d.config['norm_rule_resource'], 'number.txt'))
+    Ling.setSuffixMap(os.path.join(d.config['norm_rule_resource'], 'suffix.txt'))
+    Ling.setPrefixMap(os.path.join(d.config['norm_rule_resource'], 'prefix.txt'))
+    Ling.setAffixMap(os.path.join(d.config['norm_rule_resource'], 'affix.txt'))
 
 
-    MultiPassSieveNormalizer.maxSieveLevel = int(data.config['norm_rule_num'])
+    MultiPassSieveNormalizer.maxSieveLevel = int(d.config['norm_rule_num'])
 
-    Evaluation.initialize(data)
+    Evaluation.initialize(d)
 
-    Sieve.setStandardTerminology(data.config['norm_rule_dict'])
+    Sieve.setStandardTerminology(d.config['norm_rule_dict'])
 
-    Sieve.setTrainingDataTerminology(opt.train_file)
+    if d.config.get('norm_rule_use_trainset') != '0':
+        if train_data is None:
+            Sieve.setTrainingDataTerminology_frompath(opt.train_file)
+        else:
+            Sieve.setTrainingDataTerminology(train_data)
 
     # external corpus
-    if data.config.get('norm_rule_ext_corpus') is not None:
-        for k, v in data.config['norm_rule_ext_corpus'].items():
+    if d.config.get('norm_ext_corpus') is not None:
+        for k, v in d.config['norm_ext_corpus'].items():
             if k == 'tac':
                 Sieve.setTAC2017Terminology(v['path'])
+            else:
+                raise RuntimeError("wrong configuration")
 
 
 def runMultiPassSieve(document, entities, meddra_dict):
@@ -1673,3 +1707,72 @@ def runMultiPassSieve(document, entities, meddra_dict):
 
 def finalize():
     shutdownJVM()
+
+def train(train_data, dev_data, d, meddra_dict, opt):
+
+    init(opt, train_data, d)
+
+    best_dev_f = -10
+    best_dev_p = -10
+    best_dev_r = -10
+
+    if opt.dev_file:
+        p, r, f = evaluate(dev_data, meddra_dict)
+        logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
+    else:
+        f = best_dev_f
+
+    if f > best_dev_f:
+        logging.info("Exceed previous best f score on dev: %.4f" % (best_dev_f))
+
+        best_dev_f = f
+        best_dev_p = p
+        best_dev_r = r
+
+
+    logging.info("train finished")
+
+    return best_dev_p, best_dev_r, best_dev_f
+
+def evaluate(documents, meddra_dict):
+
+    ct_predicted = 0
+    ct_gold = 0
+    ct_correct = 0
+
+    for document in documents:
+
+        # copy entities from gold entities
+        pred_entities = []
+        for gold in document.entities:
+            pred = Entity()
+            pred.id = gold.id
+            pred.type = gold.type
+            pred.spans = gold.spans
+            pred.section = gold.section
+            pred.name = gold.name
+            pred_entities.append(pred)
+
+        runMultiPassSieve(document, pred_entities, meddra_dict)
+
+        ct_gold += len(document.entities)
+        ct_predicted += len(pred_entities)
+        for idx, pred in enumerate(pred_entities):
+            gold = document.entities[idx]
+            if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
+                ct_correct += 1
+
+
+    if ct_gold == 0:
+        precision = 0
+        recall = 0
+    else:
+        precision = ct_predicted * 1.0 / ct_gold
+        recall = ct_correct * 1.0 / ct_gold
+
+    if precision+recall == 0:
+        f_measure = 0
+    else:
+        f_measure = 2*precision*recall/(precision+recall)
+
+    return precision, recall, f_measure

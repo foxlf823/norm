@@ -49,6 +49,15 @@ class FdaXmlHandler( xml.sax.ContentHandler ):
             splitted_len = attributes['len'].split(',')
             for i, _ in enumerate(splitted_start):
                 mention.spans.append([int(splitted_start[i]), int(splitted_start[i])+int(splitted_len[i])])
+            mention.name = ''
+            mention_section = None
+            for section in self.sections:
+                if mention.section == section.id:
+                    mention_section = section
+                    break
+            for span in mention.spans:
+                mention.name += mention_section.text[span[0]:span[1]]+" "
+            mention.name = mention.name.strip()
             self.mentions.append(mention)
         elif len(self.parentTag) > 0 and self.parentTag[-1] == 'Mention' and tag == 'Normalization': # for fda 2018
             current_mention = self.mentions[-1]

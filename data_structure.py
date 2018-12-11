@@ -12,6 +12,7 @@ class Entity:
         self.sent_idx = None
         self.norm_ids = []
         self.norm_names = []
+        self.norm_confidences = []
 
         # for FDA challenge
         self.section = None

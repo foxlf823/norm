@@ -9,6 +9,9 @@ import data
 import train
 from my_utils import makedir_and_clear
 import test_fda
+from test_fda import load_meddra_dict
+import vsm
+import multi_sieve
 
 
 logger = logging.getLogger()
@@ -152,7 +155,81 @@ if opt.whattodo == 1:
         d.save(os.path.join(opt.output, "data.pkl"))
 
 elif opt.whattodo == 2:
-    pass
+    d = data.Data(opt)
+
+    makedir_and_clear(opt.output)
+
+    if opt.cross_validation > 1:
+        documents = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+
+
+        logging.info("use {} fold cross validataion".format(opt.cross_validation))
+        fold_num = opt.cross_validation
+        total_doc_num = len(documents)
+        dev_doc_num = total_doc_num // fold_num
+
+        macro_p = 0.0
+        macro_r = 0.0
+        macro_f = 0.0
+
+        meddra_dict = load_meddra_dict(d)
+
+        for fold_idx in range(fold_num):
+
+            fold_start = fold_idx*dev_doc_num
+            fold_end = fold_idx*dev_doc_num+dev_doc_num
+            if fold_end > total_doc_num:
+                fold_end = total_doc_num
+            if fold_idx == fold_num-1 and fold_end < total_doc_num:
+                fold_end = total_doc_num
+
+            train_data = []
+            train_data.extend(documents[:fold_start])
+            train_data.extend(documents[fold_end:])
+            dev_data = documents[fold_start:fold_end]
+
+            logging.info("begin fold {}".format(fold_idx))
+
+            if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
+                raise RuntimeError("wrong configuration")
+            elif opt.norm_rule:
+                p,r,f = multi_sieve.train(train_data, dev_data, d, meddra_dict, opt)
+            elif opt.norm_vsm:
+                p, r, f = vsm.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
+            elif opt.norm_neural:
+                raise RuntimeError("wrong configuration")
+            else:
+                raise RuntimeError("wrong configuration")
+
+            macro_p += p
+            macro_r += r
+            macro_f += f
+
+
+        logging.info("the macro averaged p r f are %.4f, %.4f, %.4f" % (macro_p*1.0/fold_num, macro_r*1.0/fold_num, macro_f*1.0/fold_num))
+
+
+
+    else:
+        train_data = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+
+        if opt.dev_file:
+            dev_data = data.load_data_fda(opt.dev_file, True, opt.types, opt.type_filter)
+        else:
+            logging.info("no dev data, the model will be saved after training finish")
+            dev_data = None
+
+        meddra_dict = load_meddra_dict(d)
+
+        if opt.norm_vsm:
+            vsm.train(train_data, dev_data, d, meddra_dict, opt, None)
+        elif opt.norm_neural:
+            logging.info("initialize the neural-based normalization model ...")
+        else:
+            raise RuntimeError("wrong configuration")
+
+
+
 
 else:
 

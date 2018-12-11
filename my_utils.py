@@ -403,6 +403,13 @@ def is_overlapped(a_start, a_end, b_start, b_end):
     else:
         return False
 
+def random_embedding(vocab_size, embedding_dim):
+    pretrain_emb = np.empty([vocab_size, embedding_dim])
+    scale = np.sqrt(3.0 / embedding_dim)
+    for index in range(vocab_size):
+        pretrain_emb[index,:] = np.random.uniform(-scale, scale, [1, embedding_dim])
+    return pretrain_emb
+
 # print("stat entity overlapped in MADE .........")
 # stat_entity_overlap("/Users/feili/Desktop/umass/MADE/MADE-1.0/annotations")
 # print("stat entity overlapped in Cardio .........")

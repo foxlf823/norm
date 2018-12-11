@@ -12,6 +12,7 @@ import xml.dom
 import codecs
 import multi_sieve
 import re
+import vsm
 
 def span_to_start(entity):
     ret = ""
@@ -82,12 +83,6 @@ def dump_results(doc_name, entities, opt, annotation_file):
         xml_Mentions.appendChild(xml_Mention)
 
 
-
-
-
-
-
-
     with codecs.open(os.path.join(opt.predict, doc_name), 'w', 'UTF-8') as fp:
         doc.writexml(fp, addindent=' ' * 2, newl='\n', encoding='UTF-8')
 
@@ -156,17 +151,20 @@ def test(data, opt):
     else:
         model.load_state_dict(torch.load(os.path.join(opt.output, 'model.pkl')))
 
+    meddra_dict = load_meddra_dict(data)
+
     # initialize norm models
     if opt.norm_rule and opt.norm_vsm and opt.norm_neural: # ensemble
         logging.info("initialize the ensemble normalization model ...")
 
     elif opt.norm_rule:
-        logging.info("initialize the rule-based normalization model ...")
-        multi_sieve.init(opt, data)
-        meddra_dict = load_meddra_dict(data)
+        multi_sieve.init(opt, None, data)
+
     elif opt.norm_vsm:
-        logging.info("initialize the vsm-based normalization model ...")
-        meddra_dict = load_meddra_dict(data)
+        logging.info("load model from {}".format(os.path.join(opt.output, "vsm.pkl")))
+        vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
+        vsm_model.eval()
+
     elif opt.norm_neural:
         logging.info("initialize the neural-based normalization model ...")
     else:
@@ -201,14 +199,15 @@ def test(data, opt):
 
 
                 if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
-                    pass
+                    raise RuntimeError("wrong configuration")
 
                 elif opt.norm_rule:
                     multi_sieve.runMultiPassSieve(section, entities, meddra_dict)
                 elif opt.norm_vsm:
-                    pass
+                    vsm.process_one_doc(section, entities, meddra_dict, vsm_model)
                 elif opt.norm_neural:
-                    pass
+                    raise RuntimeError("wrong configuration")
+
 
                 for entity in entities:
                     if len(entity.norm_ids)!=0: # if a mention can't be normed, not output it
