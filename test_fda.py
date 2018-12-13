@@ -166,7 +166,9 @@ def test(data, opt):
         vsm_model.eval()
 
     elif opt.norm_neural:
-        logging.info("initialize the neural-based normalization model ...")
+        logging.info("load model from {}".format(os.path.join(opt.output, "norm_neural.pkl")))
+        neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
+        neural_model.eval()
     else:
         logging.info("no normalization is performed.")
 
@@ -179,7 +181,7 @@ def test(data, opt):
     for fileName in corpus_files:
         try:
             start = time.time()
-            document, annotation_file = processOneFile_fda(fileName, corpus_dir, nlp_tool, False, opt.types, opt.type_filter)
+            document, annotation_file = processOneFile_fda(fileName, corpus_dir, nlp_tool, False, opt.types, opt.type_filter, True, False)
             pred_entities = []
 
             for section in document:
@@ -204,9 +206,9 @@ def test(data, opt):
                 elif opt.norm_rule:
                     multi_sieve.runMultiPassSieve(section, entities, meddra_dict)
                 elif opt.norm_vsm:
-                    vsm.process_one_doc(section, entities, meddra_dict, vsm_model)
+                    vsm_model.process_one_doc(section, entities, meddra_dict)
                 elif opt.norm_neural:
-                    raise RuntimeError("wrong configuration")
+                    neural_model.process_one_doc(section, entities, meddra_dict)
 
 
                 for entity in entities:
@@ -224,21 +226,14 @@ def test(data, opt):
             logging.error("process file {} error: {}".format(fileName, e))
             ct_error += 1
 
-    if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
-        pass
-
-    elif opt.norm_rule:
-        multi_sieve.finalize()
-    elif opt.norm_vsm:
-        pass
-    elif opt.norm_neural:
-        pass
+    if opt.norm_rule:
+        multi_sieve.finalize(True)
 
     logging.info("test finished, total {}, error {}".format(ct_success + ct_error, ct_error))
 
 
 def load_meddra_dict(data):
-    input_path = data.config['norm_rule_dict']
+    input_path = data.config['norm_dict']
 
     map_id_to_name = dict()
 

@@ -370,9 +370,11 @@ def get_fda_file(file_path):
     xml.sax.parse(file_path, handler)
     return handler
 
-
-
-def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, type_filter):
+# for fda 2018 data, the entity is extractly the mentions in the document.
+# for tac 2017 data, the gold normalizations can be mapped to mentions.
+# so if isFDA2018-False and isNorm-True, the 'document.entities' will be fake mentions.
+# otherwise, 'document.entities' are true mentions.
+def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, type_filter, isFDA2018, isNorm):
     documents = []
     annotation_file = get_fda_file(join(annotation_dir, fileName))
 
@@ -384,12 +386,23 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, ty
 
         entities = []
 
-        for entity in annotation_file.mentions:
-            if entity.section != section.id:
-                continue
-            if types and (entity.type not in type_filter):
-                continue
-            entities.append(entity)
+        if isFDA2018==False and isNorm==True:
+            for reaction in annotation_file.reactions:
+                entity = Entity()
+                entity.name = reaction.name
+                for normalization in reaction.normalizations:
+                    if normalization.meddra_pt_id != '':
+                        entity.norm_ids.append(normalization.meddra_pt_id)
+                        entity.norm_names.append(normalization.meddra_pt)
+                entities.append(entity)
+
+        else:
+            for entity in annotation_file.mentions:
+                if entity.section != section.id:
+                    continue
+                if types and (entity.type not in type_filter):
+                    continue
+                entities.append(entity)
 
         document.entities = entities
 
@@ -466,7 +479,7 @@ def loadData(basedir, isTraining, types, type_filter):
 
     return documents
 
-def load_data_fda(basedir, isTraining, types, type_filter):
+def load_data_fda(basedir, isTraining, types, type_filter, isFDA2018, isNorm):
 
     logging.info("load_data_fda: {}".format(basedir))
 
@@ -490,7 +503,7 @@ def load_data_fda(basedir, isTraining, types, type_filter):
     annotation_files = [f for f in listdir(basedir) if f.find('.xml')!=-1]
     for fileName in annotation_files:
         try:
-            document, _ = processOneFile_fda(fileName, basedir, nlp_tool, isTraining, types, type_filter)
+            document, _ = processOneFile_fda(fileName, basedir, nlp_tool, isTraining, types, type_filter, isFDA2018, isNorm)
         except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             continue

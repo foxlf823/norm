@@ -8,6 +8,7 @@ from jpype import *
 from data import get_fda_file
 import logging
 from data_structure import Entity
+import norm_utils
 
 class Util:
     @classmethod
@@ -79,6 +80,11 @@ class Abbreviation:
                 line = line.strip()
                 token = re.split(r"\|\|", line)
                 Abbreviation.wikiAbbreviationExpansionListMap = Util.setMap(Abbreviation.wikiAbbreviationExpansionListMap, token[0].lower(), token[1].lower())
+
+    @classmethod
+    def clearWikiAbbreviationExpansionMap(self):
+        Abbreviation.wikiAbbreviationExpansionListMap.clear()
+
     @classmethod
     def getTentativeExpansion(self, tokens, i, abbreviationLength):
         expansion = u""
@@ -275,6 +281,10 @@ class Ling:
         return Ling.stopwords
 
     @classmethod
+    def clearStopwordsList(self):
+        Ling.stopwords.clear()
+
+    @classmethod
     def setDigitToWordformMapAndReverse(self, file_path):
         with codecs.open(file_path, 'r', 'UTF-8') as fp:
             for line in fp:
@@ -282,6 +292,11 @@ class Ling:
                 tokens = re.split(r"\|\|", line)
                 Ling.digitToWordMap = Util.setMap(Ling.digitToWordMap, tokens[0], tokens[1]);
                 Ling.wordToDigitMap[tokens[1]]=tokens[0]
+
+    @classmethod
+    def clearDigitToWordformMapAndReverse(self):
+        Ling.digitToWordMap.clear()
+        Ling.wordToDigitMap.clear()
 
     @classmethod
     def setSuffixMap(self, file_path):
@@ -298,6 +313,10 @@ class Ling:
                     Ling.suffixMap = Util.setMap(Ling.suffixMap, tokens[0], tokens[1])
 
     @classmethod
+    def clearSuffixMap(self):
+        Ling.suffixMap.clear()
+
+    @classmethod
     def setPrefixMap(self, file_path):
         with codecs.open(file_path, 'r', 'UTF-8') as fp:
             for line in fp:
@@ -307,6 +326,10 @@ class Ling:
                 Ling.prefixMap[tokens[0]] = value
 
     @classmethod
+    def clearPrefixMap(self):
+        Ling.prefixMap.clear()
+
+    @classmethod
     def setAffixMap(self, file_path):
         with codecs.open(file_path, 'r', 'UTF-8') as fp:
             for line in fp:
@@ -314,6 +337,10 @@ class Ling:
                 tokens = re.split(r"\|\|", line)
                 value = u"" if len(tokens) == 1 else tokens[1]
                 Ling.affixMap[tokens[0]] = value
+
+    @classmethod
+    def clearAffixMap(self):
+        Ling.affixMap.clear()
 
     @classmethod
     def getStemmedPhrase(self, string):
@@ -544,6 +571,16 @@ class Terminology:
                 conceptNames = token[1].lower()
 
                 self.loadMaps(conceptNames, cui)
+
+    def clearTerminology(self):
+        self.cuiAlternateCuiMap.clear()
+        self.nameToCuiListMap.clear()
+        self.cuiToNameListMap.clear()
+        self.stemmedNameToCuiListMap.clear()
+        self.cuiToStemmedNameListMap.clear()
+        self.tokenToNameListMap.clear()
+        self.compoundNameToCuiListMap.clear()
+        self.simpleNameToCuiListMap.clear()
 
     def loadTrainingDataTerminology(self, documents):
 
@@ -911,8 +948,16 @@ class Sieve:
         Sieve.standardTerminology.loadTerminology(dict_path)
 
     @classmethod
+    def clearStandardTerminology(self):
+        Sieve.standardTerminology.clearTerminology()
+
+    @classmethod
     def setTrainingDataTerminology(self, train_path):
         Sieve.trainingDataTerminology.loadTrainingDataTerminology(train_path)
+
+    @classmethod
+    def clearTrainingDataTerminology(self):
+        Sieve.trainingDataTerminology.clearTerminology()
 
     @classmethod
     def setTrainingDataTerminology_frompath(self, train_path):
@@ -922,6 +967,11 @@ class Sieve:
     def setTAC2017Terminology(self, train_path):
         Sieve.tac2017Terminology.loadTAC2017Terminology(train_path)
         Sieve.use_tac2017Terminology = True
+
+    @classmethod
+    def clearTAC2017Terminology(self):
+        Sieve.tac2017Terminology.clearTerminology()
+        Sieve.use_tac2017Terminology = False
 
     @classmethod
     def getAlternateCuis(self, cui):
@@ -1661,7 +1711,7 @@ def init(opt, train_data, d):
 
     Evaluation.initialize(d)
 
-    Sieve.setStandardTerminology(d.config['norm_rule_dict'])
+    Sieve.setStandardTerminology(d.config['norm_dict'])
 
     if d.config.get('norm_rule_use_trainset') != '0':
         if train_data is None:
@@ -1700,15 +1750,30 @@ def runMultiPassSieve(document, entities, meddra_dict):
     for idx, entity in enumerate(entities):
         id = concepts[idx].getCui()
         if id != u"CUI-less":
-            name = meddra_dict[id]
-            entity.norm_ids.append(id)
-            entity.norm_names.append(name)
+            for _id in id.split("|"):
+                name = meddra_dict[_id]
+                entity.norm_ids.append(_id)
+                entity.norm_names.append(name)
 
 
-def finalize():
-    shutdownJVM()
+def finalize(shutdownjvm):
+    Ling.clearStopwordsList()
+    Abbreviation.clearWikiAbbreviationExpansionMap()
+    Ling.clearDigitToWordformMapAndReverse()
+    Ling.clearSuffixMap()
+    Ling.clearPrefixMap()
+    Ling.clearAffixMap()
 
-def train(train_data, dev_data, d, meddra_dict, opt):
+    Sieve.clearStandardTerminology()
+
+    Sieve.clearTrainingDataTerminology()
+
+    Sieve.clearTAC2017Terminology()
+
+    if shutdownjvm:
+        shutdownJVM()
+
+def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
 
     init(opt, train_data, d)
 
@@ -1717,7 +1782,7 @@ def train(train_data, dev_data, d, meddra_dict, opt):
     best_dev_r = -10
 
     if opt.dev_file:
-        p, r, f = evaluate(dev_data, meddra_dict)
+        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None)
         logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
     else:
         f = best_dev_f
@@ -1732,47 +1797,10 @@ def train(train_data, dev_data, d, meddra_dict, opt):
 
     logging.info("train finished")
 
+    if fold_idx == opt.cross_validation-1:
+        finalize(True)
+    else:
+        finalize(False)
+
     return best_dev_p, best_dev_r, best_dev_f
 
-def evaluate(documents, meddra_dict):
-
-    ct_predicted = 0
-    ct_gold = 0
-    ct_correct = 0
-
-    for document in documents:
-
-        # copy entities from gold entities
-        pred_entities = []
-        for gold in document.entities:
-            pred = Entity()
-            pred.id = gold.id
-            pred.type = gold.type
-            pred.spans = gold.spans
-            pred.section = gold.section
-            pred.name = gold.name
-            pred_entities.append(pred)
-
-        runMultiPassSieve(document, pred_entities, meddra_dict)
-
-        ct_gold += len(document.entities)
-        ct_predicted += len(pred_entities)
-        for idx, pred in enumerate(pred_entities):
-            gold = document.entities[idx]
-            if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
-                ct_correct += 1
-
-
-    if ct_gold == 0:
-        precision = 0
-        recall = 0
-    else:
-        precision = ct_predicted * 1.0 / ct_gold
-        recall = ct_correct * 1.0 / ct_gold
-
-    if precision+recall == 0:
-        f_measure = 0
-    else:
-        f_measure = 2*precision*recall/(precision+recall)
-
-    return precision, recall, f_measure

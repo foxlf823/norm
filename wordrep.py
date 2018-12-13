@@ -92,6 +92,8 @@ class WordRep(nn.Module):
         if self.use_elmo:
             with torch.no_grad():
                 elmo_rep = torch.from_numpy(np.array(self.elmo.sents2elmo(text_inputs))) # batch, seq_len, 1024
+                if torch.cuda.is_available():
+                    elmo_rep = elmo_rep.cuda(self.gpu)
 
             char_features = self.elmo_drop(self.elmo_projection(elmo_rep))
             # char_features = elmo_rep

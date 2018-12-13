@@ -12,6 +12,7 @@ import test_fda
 from test_fda import load_meddra_dict
 import vsm
 import multi_sieve
+import norm_neural
 
 
 logger = logging.getLogger()
@@ -37,7 +38,7 @@ if opt.whattodo == 1:
 
     if opt.cross_validation > 1:
 
-        documents = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+        documents = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter, True, False)
 
         external_train_data = []
         if 'ext_corpus' in d.config:
@@ -46,7 +47,7 @@ if opt.whattodo == 1:
                 if k == 'made' or k == 'cardio':
                     external_train_data.extend(data.loadData(v['path'], True, v.get('types'), v.get('types')))
                 elif k == 'tac':
-                    external_train_data.extend(data.load_data_fda(v['path'], True, v.get('types'), v.get('types')))
+                    external_train_data.extend(data.load_data_fda(v['path'], True, v.get('types'), v.get('types'), False, False))
                 else:
                     raise RuntimeError("not support external corpus")
 
@@ -61,7 +62,7 @@ if opt.whattodo == 1:
 
         for fold_idx in range(fold_num):
             # debug feili
-            # if fold_idx ==0 or fold_idx == 1 or fold_idx == 2 or fold_idx == 4:
+            # if fold_idx !=4 :
             #     continue
 
             fold_start = fold_idx*dev_doc_num
@@ -111,7 +112,7 @@ if opt.whattodo == 1:
     else:
         # if -dev_file is assigned, we can use it for debugging
         # if not assign, we can train a model on the training set, but the model will be saved after final iteration.
-        d.train_data = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+        d.train_data = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter, True, False)
 
         external_train_data = []
         if 'ext_corpus' in d.config:
@@ -120,14 +121,14 @@ if opt.whattodo == 1:
                 if k == 'made' or k == 'cardio':
                     external_train_data.extend(data.loadData(v['path'], True, v.get('types'), v.get('types')))
                 elif k == 'tac':
-                    external_train_data.extend(data.load_data_fda(v['path'], True, v.get('types'), v.get('types')))
+                    external_train_data.extend(data.load_data_fda(v['path'], True, v.get('types'), v.get('types'), False, False))
                 else:
                     raise RuntimeError("not support external corpus")
         if len(external_train_data) != 0:
             d.train_data.extend(external_train_data)
 
         if opt.dev_file:
-            d.dev_data = data.load_data_fda(opt.dev_file, True, opt.types, opt.type_filter)
+            d.dev_data = data.load_data_fda(opt.dev_file, True, opt.types, opt.type_filter, True, False)
         else:
             logging.info("no dev data, the model will be saved after training finish")
 
@@ -160,7 +161,7 @@ elif opt.whattodo == 2:
     makedir_and_clear(opt.output)
 
     if opt.cross_validation > 1:
-        documents = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+        documents = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter, True, True)
 
 
         logging.info("use {} fold cross validataion".format(opt.cross_validation))
@@ -193,11 +194,11 @@ elif opt.whattodo == 2:
             if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
                 raise RuntimeError("wrong configuration")
             elif opt.norm_rule:
-                p,r,f = multi_sieve.train(train_data, dev_data, d, meddra_dict, opt)
+                p,r,f = multi_sieve.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
             elif opt.norm_vsm:
                 p, r, f = vsm.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
             elif opt.norm_neural:
-                raise RuntimeError("wrong configuration")
+                p, r, f = norm_neural.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
             else:
                 raise RuntimeError("wrong configuration")
 
@@ -211,10 +212,10 @@ elif opt.whattodo == 2:
 
 
     else:
-        train_data = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter)
+        train_data = data.load_data_fda(opt.train_file, True, opt.types, opt.type_filter, True, True)
 
         if opt.dev_file:
-            dev_data = data.load_data_fda(opt.dev_file, True, opt.types, opt.type_filter)
+            dev_data = data.load_data_fda(opt.dev_file, True, opt.types, opt.type_filter, True, True)
         else:
             logging.info("no dev data, the model will be saved after training finish")
             dev_data = None
@@ -224,7 +225,7 @@ elif opt.whattodo == 2:
         if opt.norm_vsm:
             vsm.train(train_data, dev_data, d, meddra_dict, opt, None)
         elif opt.norm_neural:
-            logging.info("initialize the neural-based normalization model ...")
+            norm_neural.train(train_data, dev_data, d, meddra_dict, opt, None)
         else:
             raise RuntimeError("wrong configuration")
 

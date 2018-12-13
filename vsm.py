@@ -1,15 +1,14 @@
 import torch.nn as nn
 import logging
 from alphabet import Alphabet
-from options import opt
-from my_utils import normalize_word, random_embedding
+from my_utils import random_embedding
 import torch
 from data import build_pretrain_embedding, my_tokenize, load_data_fda
 import numpy as np
 import torch.nn.functional as functional
 import os
 from data_structure import Entity
-
+import norm_utils
 
 class VsmNormer(nn.Module):
 
@@ -22,36 +21,13 @@ class VsmNormer(nn.Module):
         self.dict_embedding = None
 
 
-    def build_alphabet(self, data):
-        for document in data:
-            for sentence in document.sentences:
-                for token in sentence:
-                    word = token['text']
-                    self.word_alphabet.add(word_preprocess(word))
-
-    def build_dict_alphabet(self, meddra_dict):
-        for concept_id, concept_name in meddra_dict.items():
-            tokens = my_tokenize(concept_name)
-            for word in tokens:
-                self.word_alphabet.add(word_preprocess(word))
-
-    def fix_alphabet(self):
-        self.word_alphabet.close()
-
-    def get_dict_index(self, concept_id):
-        index = self.dict_alphabet.get_index(concept_id)-2 # since alphabet begin at 2
-        return index
-
-    def get_dict_name(self, concept_index):
-        name = self.dict_alphabet.get_instance(concept_index+2)
-        return name
 
     def batch_name_to_ids(self, name):
         tokens = my_tokenize(name)
         length = len(tokens)
         tokens_id = np.zeros((1, length), dtype=np.int)
         for i, word in enumerate(tokens):
-            word = word_preprocess(word)
+            word = norm_utils.word_preprocess(word)
             tokens_id[0][i] = self.word_alphabet.get_index(word)
 
         return torch.from_numpy(tokens_id)
@@ -68,7 +44,7 @@ class VsmNormer(nn.Module):
                 emb = self.word_embedding(tokens_id)
                 emb = emb.unsqueeze_(1)
                 pool = functional.avg_pool2d(emb, (length, 1))
-                index = self.get_dict_index(concept_id)
+                index = norm_utils.get_dict_index(self.dict_alphabet, concept_id)
                 self.dict_embedding.weight.data[index] = pool[0][0]
 
     def compute_similarity(self, mention_rep, concep_rep):
@@ -97,12 +73,22 @@ class VsmNormer(nn.Module):
 
         return values, indices
 
+    def process_one_doc(self, doc, entities, dict):
 
-def word_preprocess(word):
-    if opt.number_normalized:
-        word = normalize_word(word)
-    word = word.lower()
-    return word
+        for entity in entities:
+            with torch.no_grad():
+                tokens_id = self.batch_name_to_ids(entity.name)
+
+                values, indices = self.forward(tokens_id)
+
+                norm_id = norm_utils.get_dict_name(self.dict_alphabet, indices.item())
+                name = dict[norm_id]
+                entity.norm_ids.append(norm_id)
+                entity.norm_names.append(name)
+                entity.norm_confidences.append(values.item())
+
+
+
 
 def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     logging.info("train the vsm-based normalization model ...")
@@ -111,7 +97,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     if d.config.get('norm_ext_corpus') is not None:
         for k, v in d.config['norm_ext_corpus'].items():
             if k == 'tac':
-                external_train_data.extend(load_data_fda(v['path'], True, v.get('types'), v.get('types')))
+                external_train_data.extend(load_data_fda(v['path'], True, v.get('types'), v.get('types'), False, True))
             else:
                 raise RuntimeError("not support external corpus")
     if len(external_train_data) != 0:
@@ -120,15 +106,16 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     vsm_model = VsmNormer()
 
     logging.info("build alphabet ...")
-    vsm_model.build_alphabet(train_data)
+    norm_utils.build_alphabet(vsm_model.word_alphabet, train_data)
     if opt.dev_file:
-        vsm_model.build_alphabet(dev_data)
-    vsm_model.build_dict_alphabet(meddra_dict)
-    vsm_model.fix_alphabet()
+        norm_utils.build_alphabet(vsm_model.word_alphabet, dev_data)
 
-    if d.config.get('norm_vsm_emb') is not None:
+    norm_utils.build_alphabet_from_dict(vsm_model.word_alphabet, meddra_dict)
+    norm_utils.fix_alphabet(vsm_model.word_alphabet)
+
+    if d.config.get('norm_emb') is not None:
         logging.info("load pretrained word embedding ...")
-        pretrain_word_embedding, word_emb_dim = build_pretrain_embedding(d.config.get('norm_vsm_emb'),
+        pretrain_word_embedding, word_emb_dim = build_pretrain_embedding(d.config.get('norm_emb'),
                                                                               vsm_model.word_alphabet,
                                                                               opt.word_emb_dim, False)
         vsm_model.word_embedding = nn.Embedding(vsm_model.word_alphabet.size(), word_emb_dim)
@@ -151,7 +138,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     best_dev_r = -10
 
     if opt.dev_file:
-        p, r, f = evaluate(dev_data, meddra_dict, vsm_model)
+        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model)
         logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
     else:
         f = best_dev_f
@@ -180,60 +167,6 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     return best_dev_p, best_dev_r, best_dev_f
 
 
-def evaluate(documents, meddra_dict, vsm_model):
-    vsm_model.eval()
-
-    ct_predicted = 0
-    ct_gold = 0
-    ct_correct = 0
-
-    for document in documents:
-
-        # copy entities from gold entities
-        pred_entities = []
-        for gold in document.entities:
-            pred = Entity()
-            pred.id = gold.id
-            pred.type = gold.type
-            pred.spans = gold.spans
-            pred.section = gold.section
-            pred.name = gold.name
-            pred_entities.append(pred)
-
-        process_one_doc(document, pred_entities, meddra_dict, vsm_model)
-
-        ct_gold += len(document.entities)
-        ct_predicted += len(pred_entities)
-        for idx, pred in enumerate(pred_entities):
-            gold = document.entities[idx]
-            if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
-                ct_correct += 1
 
 
-    if ct_gold == 0:
-        precision = 0
-        recall = 0
-    else:
-        precision = ct_predicted * 1.0 / ct_gold
-        recall = ct_correct * 1.0 / ct_gold
 
-    if precision+recall == 0:
-        f_measure = 0
-    else:
-        f_measure = 2*precision*recall/(precision+recall)
-
-    return precision, recall, f_measure
-
-def process_one_doc(doc, entities, dict, vsm_model):
-
-    for entity in entities:
-        with torch.no_grad():
-            tokens_id = vsm_model.batch_name_to_ids(entity.name)
-
-            values, indices = vsm_model.forward(tokens_id)
-
-            norm_id = vsm_model.get_dict_name(indices.item())
-            name = dict[norm_id]
-            entity.norm_ids.append(norm_id)
-            entity.norm_names.append(name)
-            entity.norm_confidences.append(values.item())
