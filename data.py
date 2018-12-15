@@ -391,9 +391,8 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, ty
                 entity = Entity()
                 entity.name = reaction.name
                 for normalization in reaction.normalizations:
-                    if normalization.meddra_pt_id != '':
-                        entity.norm_ids.append(normalization.meddra_pt_id)
-                        entity.norm_names.append(normalization.meddra_pt)
+                    entity.norm_ids.append(normalization.meddra_pt_id) # can be none
+                    entity.norm_names.append(normalization.meddra_pt)
                 entities.append(entity)
 
         else:

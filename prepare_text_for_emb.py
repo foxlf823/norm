@@ -695,3 +695,7 @@ if __name__ == '__main__':
     # training set
     # output_file = '/Users/feili/resource/data_to_train_emb/fda2018.txt'
     # tac2017_to_text("/Users/feili/dataset/ADE Eval Shared Resources/ose_xml_training_20181101", output_file, False)
+
+    # pubmed meddra
+    # output_file = '/Users/feili/resource/data_to_train_emb/pubmed_meddra.txt'
+    # pubmed_to_text('/Users/feili/resource/pubmed_meddra', output_file, False)

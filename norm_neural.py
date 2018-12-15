@@ -73,6 +73,8 @@ class NeuralNormer(nn.Module):
 
         return self.criterion(y_pred, y_gold)
 
+
+
     def normalize(self, y_pred):
 
         return functional.softmax(y_pred, dim=1)
@@ -141,6 +143,16 @@ def generate_instances(entities, word_alphabet, dict_alphabet):
     Ys = []
 
     for entity in entities:
+        if len(entity.norm_ids) > 0:
+            Y = norm_utils.get_dict_index(dict_alphabet, entity.norm_ids[0])  # use the first id to generate instance
+            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):  # for tac, can be none or oov ID
+                Ys.append(Y)
+            else:
+                continue
+        else:
+            Ys.append(0)
+
+
         tokens = my_tokenize(entity.name)
         word_ids = []
         for token in tokens:
@@ -150,11 +162,7 @@ def generate_instances(entities, word_alphabet, dict_alphabet):
 
         Xs.append(word_ids)
 
-        if len(entity.norm_ids) > 0:
-            Y = norm_utils.get_dict_index(dict_alphabet, entity.norm_ids[0]) # use the first id to generate instance
-            Ys.append(Y)
-        else:
-            Ys.append(0)
+
 
     return Xs, Ys
 
@@ -237,7 +245,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
 
     dict_alphabet = Alphabet('dict')
     norm_utils.init_dict_alphabet(dict_alphabet, meddra_dict)
-
+    norm_utils.fix_alphabet(dict_alphabet)
 
     neural_model = NeuralNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet)
 

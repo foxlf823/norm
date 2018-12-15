@@ -72,8 +72,7 @@ if opt.whattodo == 1:
             if fold_idx == fold_num-1 and fold_end < total_doc_num:
                 fold_end = total_doc_num
 
-            # debug feili
-            # d.train_data = documents[fold_start:fold_end]
+
             d.train_data = []
             d.train_data.extend(documents[:fold_start])
             d.train_data.extend(documents[fold_end:])

@@ -9,6 +9,7 @@ import torch.nn.functional as functional
 import os
 from data_structure import Entity
 import norm_utils
+from options import opt
 
 class VsmNormer(nn.Module):
 
@@ -19,7 +20,12 @@ class VsmNormer(nn.Module):
         self.word_embedding = None
         self.dict_alphabet = Alphabet('dict')
         self.dict_embedding = None
+        self.gpu = opt.gpu
 
+    def transfer_model_into_gpu(self):
+        if torch.cuda.is_available():
+            self.word_embedding = self.word_embedding.cuda(self.gpu)
+            self.dict_embedding = self.dict_embedding.cuda(self.gpu)
 
 
     def batch_name_to_ids(self, name):
@@ -30,11 +36,18 @@ class VsmNormer(nn.Module):
             word = norm_utils.word_preprocess(word)
             tokens_id[0][i] = self.word_alphabet.get_index(word)
 
-        return torch.from_numpy(tokens_id)
+        tokens_id = torch.from_numpy(tokens_id)
+
+        if torch.cuda.is_available():
+            return tokens_id.cuda(self.gpu)
+        else:
+            return tokens_id
 
 
     def init_vector_for_dict(self, meddra_dict):
         self.dict_embedding = nn.Embedding(len(meddra_dict), self.embedding_dim)
+        if torch.cuda.is_available():
+            self.dict_embedding = self.dict_embedding.cuda(self.gpu)
 
         for concept_id, concept_name in meddra_dict.items():
             self.dict_alphabet.add(concept_id)
@@ -128,8 +141,12 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
             torch.from_numpy(random_embedding(vsm_model.word_alphabet.size(), d.word_emb_dim)))
         vsm_model.embedding_dim = d.word_emb_dim
 
+    if torch.cuda.is_available():
+        vsm_model.word_embedding = vsm_model.word_embedding.cuda(vsm_model.gpu)
+
     logging.info("init_vector_for_dict")
     vsm_model.init_vector_for_dict(meddra_dict)
+    norm_utils.fix_alphabet(vsm_model.dict_alphabet)
 
     vsm_model.train()
 
