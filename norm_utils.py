@@ -19,6 +19,9 @@ def build_alphabet(alphabet, data):
                 word = token['text']
                 alphabet.add(word_preprocess(word))
 
+def open_alphabet(alphabet):
+    alphabet.open()
+
 def fix_alphabet(alphabet):
     alphabet.close()
 

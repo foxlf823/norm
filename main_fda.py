@@ -174,6 +174,12 @@ elif opt.whattodo == 2:
 
         meddra_dict = load_meddra_dict(d)
 
+        if opt.norm_neural:
+            if d.config['norm_neural_pretrain'] == '1':
+                neural_model = norm_neural.dict_pretrain(meddra_dict, d)
+            else:
+                neural_model = None
+
         for fold_idx in range(fold_num):
 
             fold_start = fold_idx*dev_doc_num
@@ -197,7 +203,7 @@ elif opt.whattodo == 2:
             elif opt.norm_vsm:
                 p, r, f = vsm.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
             elif opt.norm_neural:
-                p, r, f = norm_neural.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
+                p, r, f = norm_neural.train(train_data, dev_data, d, meddra_dict, opt, fold_idx, neural_model)
             else:
                 raise RuntimeError("wrong configuration")
 
@@ -224,7 +230,12 @@ elif opt.whattodo == 2:
         if opt.norm_vsm:
             vsm.train(train_data, dev_data, d, meddra_dict, opt, None)
         elif opt.norm_neural:
-            norm_neural.train(train_data, dev_data, d, meddra_dict, opt, None)
+            if d.config['norm_neural_pretrain'] == '1':
+                neural_model = norm_neural.dict_pretrain(meddra_dict, d)
+            else:
+                neural_model = None
+
+            norm_neural.train(train_data, dev_data, d, meddra_dict, opt, None, neural_model)
         else:
             raise RuntimeError("wrong configuration")
 
