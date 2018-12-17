@@ -13,6 +13,7 @@ import time
 import os
 from data_structure import Entity
 import torch.nn.functional as functional
+import math
 
 class DotAttentionLayer(nn.Module):
     def __init__(self, hidden_size):
@@ -52,19 +53,25 @@ class NeuralNormer(nn.Module):
         self.dict_alphabet = dict_alphabet
         self.gpu = opt.gpu
 
-        self.attn = DotAttentionLayer(self.embedding_dim)
+        #self.attn = DotAttentionLayer(self.embedding_dim)
         self.linear = nn.Linear(self.embedding_dim, norm_utils.get_dict_size(self.dict_alphabet), bias=False)
         self.criterion = nn.CrossEntropyLoss()
 
         if torch.cuda.is_available():
             self.word_embedding = self.word_embedding.cuda(self.gpu)
-            self.attn = self.attn.cuda(self.gpu)
+            #self.attn = self.attn.cuda(self.gpu)
             self.linear = self.linear.cuda(self.gpu)
-            self.criterion = self.criterion.cuda(self.gpu)
+
 
     def forward(self, x, lengths):
+        length = x.size(1)
         x = self.word_embedding(x)
-        x = self.attn((x, lengths))
+
+        #x = self.attn((x, lengths))
+        x = x.unsqueeze_(1)
+        x = functional.avg_pool2d(x, (length, 1))
+        x = x.squeeze_(1).squeeze_(1)
+
         x = self.linear(x)
 
         return x
@@ -100,7 +107,6 @@ class NeuralNormer(nn.Module):
             values, indices = torch.max(y_pred, 1)
 
             actual_batch_size = lengths.size(0)
-            # current = entity_start
 
             for batch_idx in range(actual_batch_size):
                 entity = entities[entity_start+batch_idx]
@@ -109,15 +115,6 @@ class NeuralNormer(nn.Module):
                 entity.norm_ids.append(norm_id)
                 entity.norm_names.append(name)
                 entity.norm_confidences.append(values[batch_idx].item())
-
-            # while current < entity_start+actual_batch_size:
-            #     entity = entities[current]
-            #     norm_id = norm_utils.get_dict_name(self.dict_alphabet, indices[current].item())
-            #     name = dict[norm_id]
-            #     entity.norm_ids.append(norm_id)
-            #     entity.norm_names.append(name)
-            #     entity.norm_confidences.append(values[current].item())
-            #     current += 1
 
             entity_start += actual_batch_size
 
@@ -241,12 +238,12 @@ def dict_pretrain(meddra_dict, d):
         pretrain_word_embedding, word_emb_dim = build_pretrain_embedding(d.config.get('norm_emb'),
                                                                          word_alphabet,
                                                                               opt.word_emb_dim, False)
-        word_embedding = nn.Embedding(word_alphabet.size(), word_emb_dim)
+        word_embedding = nn.Embedding(word_alphabet.size(), word_emb_dim, padding_idx=0)
         word_embedding.weight.data.copy_(torch.from_numpy(pretrain_word_embedding))
         embedding_dim = word_emb_dim
     else:
         logging.info("randomly initialize word embedding ...")
-        word_embedding = nn.Embedding(word_alphabet.size(), d.word_emb_dim)
+        word_embedding = nn.Embedding(word_alphabet.size(), d.word_emb_dim, padding_idx=0)
         word_embedding.weight.data.copy_(
             torch.from_numpy(random_embedding(word_alphabet.size(), d.word_emb_dim)))
         embedding_dim = d.word_emb_dim
@@ -311,6 +308,38 @@ def dict_pretrain(meddra_dict, d):
 
     return neural_model
 
+def dump_wordemb(word_embedding):
+    with open("./dump_emb.txt", 'w') as fp:
+        tensor = word_embedding.weight.data
+        for row in range(tensor.size(0)):
+
+            for col in range(tensor.size(1)):
+                fp.write(str(tensor[row][col].item())+" ")
+            fp.write("\n")
+
+    exit(-1)
+
+def check_nan2d(tensor):
+    for row in range(tensor.size(0)):
+
+        for col in range(tensor.size(1)):
+            if math.isinf(tensor[row][col].item()) or math.isnan(tensor[row][col].item()):
+                logging.error(tensor[row][col])
+                logging.error(tensor[row])
+                logging.error("{} {}".format(row, col))
+                exit(1)
+
+
+def check_nan3d(tensor):
+    for i in range(tensor.size(0)):
+        for j in range(tensor.size(1)):
+            for k in range(tensor.size(2)):
+                if math.isinf(tensor[i][j][k].item()) or math.isnan(tensor[i][j][k].item()):
+                    logging.error(tensor)
+                    logging.error("{} {} {}".format(i, j, k))
+                    exit(1)
+
+
 
 def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
     logging.info("train the neural-based normalization model ...")
@@ -339,12 +368,12 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
         pretrain_word_embedding, word_emb_dim = build_pretrain_embedding(d.config.get('norm_emb'),
                                                                          word_alphabet,
                                                                               opt.word_emb_dim, False)
-        word_embedding = nn.Embedding(word_alphabet.size(), word_emb_dim)
+        word_embedding = nn.Embedding(word_alphabet.size(), word_emb_dim, padding_idx=0)
         word_embedding.weight.data.copy_(torch.from_numpy(pretrain_word_embedding))
         embedding_dim = word_emb_dim
     else:
         logging.info("randomly initialize word embedding ...")
-        word_embedding = nn.Embedding(word_alphabet.size(), d.word_emb_dim)
+        word_embedding = nn.Embedding(word_alphabet.size(), d.word_emb_dim, padding_idx=0)
         word_embedding.weight.data.copy_(
             torch.from_numpy(random_embedding(word_alphabet.size(), d.word_emb_dim)))
         embedding_dim = d.word_emb_dim
@@ -398,6 +427,9 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
             y_pred = neural_model.forward(x, lengths)
 
             l = neural_model.loss(y_pred, y)
+            # debug feili
+            # if str(l.item()) == 'nan':
+            #     logging.error("loss: {}".format(l.item()))
 
             l.backward()
 

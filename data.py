@@ -690,7 +690,7 @@ def load_pretrain_emb(embedding_path):
                     embedd_dim = len(tokens) - 1
                 else:
                     assert (embedd_dim + 1 == len(tokens))
-                embedd = np.empty([1, embedd_dim])
+                embedd = np.zeros([1, embedd_dim])
                 embedd[:] = tokens[1:]
                 embedd_dict[tokens[0]] = embedd
                 # embedd_dict[tokens[0].decode('utf-8')] = embedd
@@ -707,7 +707,7 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
         embedd_dict, embedd_dim = load_pretrain_emb(embedding_path)
     alphabet_size = word_alphabet.size()
     scale = np.sqrt(3.0 / embedd_dim)
-    pretrain_emb = np.empty([word_alphabet.size(), embedd_dim])
+    pretrain_emb = np.zeros([word_alphabet.size(), embedd_dim])
     perfect_match = 0
     case_match = 0
     digits_replaced_with_zeros_found = 0

@@ -63,7 +63,7 @@ class WordRep(nn.Module):
 
 
     def random_embedding(self, vocab_size, embedding_dim):
-        pretrain_emb = np.empty([vocab_size, embedding_dim])
+        pretrain_emb = np.zeros([vocab_size, embedding_dim])
         scale = np.sqrt(3.0 / embedding_dim)
         for index in range(vocab_size):
             pretrain_emb[index,:] = np.random.uniform(-scale, scale, [1, embedding_dim])

@@ -61,9 +61,6 @@ if opt.whattodo == 1:
         macro_f = 0.0
 
         for fold_idx in range(fold_num):
-            # debug feili
-            # if fold_idx !=4 :
-            #     continue
 
             fold_start = fold_idx*dev_doc_num
             fold_end = fold_idx*dev_doc_num+dev_doc_num
@@ -195,6 +192,7 @@ elif opt.whattodo == 2:
             dev_data = documents[fold_start:fold_end]
 
             logging.info("begin fold {}".format(fold_idx))
+            logging.info("doc start {}, doc end {}".format(fold_start, fold_end))
 
             if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
                 raise RuntimeError("wrong configuration")
