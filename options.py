@@ -37,6 +37,7 @@ parser.add_argument('-norm_rule', action='store_true', default=False)
 parser.add_argument('-norm_vsm', action='store_true', default=False)
 parser.add_argument('-norm_neural', action='store_true', default=False)
 
+
 opt = parser.parse_args()
 
 if opt.types:

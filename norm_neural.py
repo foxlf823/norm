@@ -386,7 +386,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
 
     neural_model = NeuralNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet)
     if pretrain_model is not None:
-        neural_model.attn.W.weight.data.copy_(pretrain_model.attn.W.weight.data)
+        # neural_model.attn.W.weight.data.copy_(pretrain_model.attn.W.weight.data)
         neural_model.linear.weight.data.copy_(pretrain_model.linear.weight.data)
 
     train_X = []
