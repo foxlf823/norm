@@ -17,6 +17,11 @@ class Entity:
         # for FDA challenge
         self.section = None
 
+        # for ensemble
+        self.rule_id = None
+        self.vsm_id = None
+        self.neural_id = None
+
     # def create(self, id, type, start, end, text, sent_idx, tf_start, tf_end):
     #     self.id = id
     #     self.type = type

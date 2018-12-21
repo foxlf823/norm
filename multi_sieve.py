@@ -1754,6 +1754,9 @@ def runMultiPassSieve(document, entities, meddra_dict):
                 name = meddra_dict[_id]
                 entity.norm_ids.append(_id)
                 entity.norm_names.append(name)
+                if entity.rule_id is None:
+                    entity.rule_id = _id
+
 
 
 def finalize(shutdownjvm):
@@ -1782,7 +1785,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     best_dev_r = -10
 
     if opt.dev_file:
-        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None)
+        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None)
         logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
     else:
         f = best_dev_f
@@ -1797,10 +1800,13 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
 
     logging.info("train finished")
 
-    if fold_idx == opt.cross_validation-1:
+    if fold_idx is None:
         finalize(True)
     else:
-        finalize(False)
+        if fold_idx == opt.cross_validation-1:
+            finalize(True)
+        else:
+            finalize(False)
 
     return best_dev_p, best_dev_r, best_dev_f
 

@@ -4,6 +4,8 @@ from my_utils import normalize_word
 from data import my_tokenize
 from data_structure import Entity
 import multi_sieve
+import copy
+import logging
 
 def word_preprocess(word):
     if opt.number_normalized:
@@ -48,13 +50,25 @@ def get_dict_size(dict_alphabet):
     return dict_alphabet.size()-2
 
 
-def evaluate(documents, meddra_dict, model):
-    if model is not None:
-        model.eval()
+def evaluate(documents, meddra_dict, vsm_model, neural_model):
+    if opt.norm_vsm :
+        vsm_model.eval()
+
+    if opt.norm_neural:
+        neural_model.eval()
 
     ct_predicted = 0
     ct_gold = 0
     ct_correct = 0
+
+    if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
+        ct_correct_rule = 0
+        ct_correct_vsm = 0
+        ct_correct_neural = 0
+        ct_correct_all = 0
+        ct_correct_rule_vsm = 0
+        ct_correct_rule_neural = 0
+        ct_correct_vsm_neural = 0
 
     for document in documents:
 
@@ -69,18 +83,83 @@ def evaluate(documents, meddra_dict, model):
             pred.name = gold.name
             pred_entities.append(pred)
 
-        if model is not None:
-            model.process_one_doc(document, pred_entities, meddra_dict)
-        else:
+        if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
+            pred_entities2 = copy.deepcopy(pred_entities)
+            pred_entities3 = copy.deepcopy(pred_entities)
             multi_sieve.runMultiPassSieve(document, pred_entities, meddra_dict)
+            vsm_model.process_one_doc(document, pred_entities2, meddra_dict)
+            neural_model.process_one_doc(document, pred_entities3, meddra_dict)
+        elif opt.norm_rule:
+            multi_sieve.runMultiPassSieve(document, pred_entities, meddra_dict)
+        elif opt.norm_vsm:
+            vsm_model.process_one_doc(document, pred_entities, meddra_dict)
+        elif opt.norm_neural:
+            neural_model.process_one_doc(document, pred_entities, meddra_dict)
+        else:
+            raise RuntimeError("wrong configuration")
 
-        ct_gold += len(document.entities)
-        ct_predicted += len(pred_entities)
-        for idx, pred in enumerate(pred_entities):
-            gold = document.entities[idx]
-            if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
-                ct_correct += 1
+        if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
 
+            ct_gold += len(document.entities)
+            ct_predicted += len(pred_entities)
+            for idx, gold in enumerate(document.entities):
+                if (pred_entities[idx].rule_id is not None and pred_entities[idx].rule_id in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is not None and pred_entities2[idx].vsm_id in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is not None and pred_entities3[idx].neural_id in gold.norm_ids):
+                    ct_correct_all += 1
+                    ct_correct += 1
+
+                if (pred_entities[idx].rule_id is not None and pred_entities[idx].rule_id in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is None or pred_entities2[idx].vsm_id not in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is None or pred_entities3[idx].neural_id not in gold.norm_ids):
+                    ct_correct_rule += 1
+                    ct_correct += 1
+
+                if (pred_entities[idx].rule_id is None or pred_entities[idx].rule_id not in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is not None and pred_entities2[idx].vsm_id in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is None or pred_entities3[idx].neural_id not in gold.norm_ids):
+                    ct_correct_vsm += 1
+                    ct_correct += 1
+
+                if (pred_entities[idx].rule_id is None or pred_entities[idx].rule_id not in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is None or pred_entities2[idx].vsm_id not in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is not None and pred_entities3[idx].neural_id in gold.norm_ids):
+                    ct_correct_neural += 1
+                    ct_correct += 1
+
+                if (pred_entities[idx].rule_id is not None and pred_entities[idx].rule_id in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is not None and pred_entities2[idx].vsm_id in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is None or pred_entities3[idx].neural_id not in gold.norm_ids):
+                    ct_correct_rule_vsm += 1
+                    ct_correct += 1
+
+                if (pred_entities[idx].rule_id is not None and pred_entities[idx].rule_id in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is None or pred_entities2[idx].vsm_id not in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is not None and pred_entities3[idx].neural_id in gold.norm_ids):
+                    ct_correct_rule_neural += 1
+                    ct_correct += 1
+
+                if (pred_entities[idx].rule_id is None or pred_entities[idx].rule_id not in gold.norm_ids)\
+                    and (pred_entities2[idx].vsm_id is not None and pred_entities2[idx].vsm_id in gold.norm_ids) \
+                        and (pred_entities3[idx].neural_id is not None and pred_entities3[idx].neural_id in gold.norm_ids):
+                    ct_correct_vsm_neural += 1
+                    ct_correct += 1
+
+        else:
+
+            ct_gold += len(document.entities)
+            ct_predicted += len(pred_entities)
+            for idx, pred in enumerate(pred_entities):
+                gold = document.entities[idx]
+                if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
+                    ct_correct += 1
+
+    if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
+        logging.info("ensemble correct. all:{} rule:{} vsm:{} neural:{} rule_vsm:{} rule_neural:{} vsm_neural:{}"
+                     .format(ct_correct_all, ct_correct_rule, ct_correct_vsm, ct_correct_neural, ct_correct_rule_vsm,
+                             ct_correct_rule_neural, ct_correct_vsm_neural))
+
+    logging.info("gold:{} pred:{} correct:{}".format(ct_gold, ct_predicted, ct_correct))
 
     if ct_gold == 0:
         precision = 0

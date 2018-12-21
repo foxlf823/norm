@@ -13,6 +13,7 @@ from test_fda import load_meddra_dict
 import vsm
 import multi_sieve
 import norm_neural
+import ensemble
 
 
 logger = logging.getLogger()
@@ -195,7 +196,7 @@ elif opt.whattodo == 2:
             logging.info("doc start {}, doc end {}".format(fold_start, fold_end))
 
             if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
-                raise RuntimeError("wrong configuration")
+                p, r, f = ensemble.train(train_data, dev_data, d, meddra_dict, opt, fold_idx, neural_model)
             elif opt.norm_rule:
                 p,r,f = multi_sieve.train(train_data, dev_data, d, meddra_dict, opt, fold_idx)
             elif opt.norm_vsm:
@@ -225,14 +226,17 @@ elif opt.whattodo == 2:
 
         meddra_dict = load_meddra_dict(d)
 
-        if opt.norm_vsm:
-            vsm.train(train_data, dev_data, d, meddra_dict, opt, None)
-        elif opt.norm_neural:
+        if opt.norm_neural:
             if d.config['norm_neural_pretrain'] == '1':
                 neural_model = norm_neural.dict_pretrain(meddra_dict, d)
             else:
                 neural_model = None
 
+        if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
+            ensemble.train(train_data, dev_data, d, meddra_dict, opt, None, neural_model)
+        elif opt.norm_vsm:
+            vsm.train(train_data, dev_data, d, meddra_dict, opt, None)
+        elif opt.norm_neural:
             norm_neural.train(train_data, dev_data, d, meddra_dict, opt, None, neural_model)
         else:
             raise RuntimeError("wrong configuration")

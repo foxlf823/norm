@@ -115,6 +115,7 @@ class NeuralNormer(nn.Module):
                 entity.norm_ids.append(norm_id)
                 entity.norm_names.append(name)
                 entity.norm_confidences.append(values[batch_idx].item())
+                entity.neural_id = norm_id
 
             entity_start += actual_batch_size
 
@@ -442,7 +443,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
         logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
 
         if opt.dev_file:
-            p, r, f = norm_utils.evaluate(dev_data, meddra_dict, neural_model)
+            p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, neural_model)
             logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
         else:
             f = best_dev_f
