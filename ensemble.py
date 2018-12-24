@@ -19,6 +19,198 @@ import multi_sieve
 import vsm
 import norm_neural
 import copy
+from collections import Counter
+
+class Ensemble(nn.Module):
+
+    def __init__(self, word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses):
+        super(Ensemble, self).__init__()
+
+        self.word_alphabet = word_alphabet
+        self.embedding_dim = embedding_dim
+        self.word_embedding = word_embedding
+        self.dict_alphabet = dict_alphabet
+        self.gpu = opt.gpu
+        self.poses = poses
+        self.dict_size = norm_utils.get_dict_size(dict_alphabet)
+
+        self.vsm_linear = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
+        self.vsm_linear.weight.data.copy_(torch.eye(self.embedding_dim))
+
+        self.neural_linear = nn.Linear(self.embedding_dim, norm_utils.get_dict_size(self.dict_alphabet), bias=False)
+
+        self.criterion = nn.CrossEntropyLoss()
+
+        if torch.cuda.is_available():
+            self.word_embedding = self.word_embedding.cuda(self.gpu)
+            self.vsm_linear = self.vsm_linear.cuda(self.gpu)
+            self.neural_linear = self.neural_linear.cuda(self.gpu)
+
+
+        if torch.cuda.is_available():
+            self.w1 = torch.nn.Parameter(torch.tensor([0.3]).cuda(self.gpu))
+            self.w2 = torch.nn.Parameter(torch.tensor([0.4]).cuda(self.gpu))
+            self.w3 = torch.nn.Parameter(torch.tensor([0.3]).cuda(self.gpu))
+        else:
+            self.w1 = torch.nn.Parameter(torch.tensor([0.3]))
+            self.w2 = torch.nn.Parameter(torch.tensor([0.4]))
+            self.w3 = torch.nn.Parameter(torch.tensor([0.3]))
+
+    def forward(self, words, rules, lengths):
+
+        length = words.size(1)
+        mention_word_emb = self.word_embedding(words)
+        mention_word_emb = mention_word_emb.unsqueeze_(1)
+        mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
+        mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
+
+        length = self.poses.size(1)
+        pos_word_emb = self.word_embedding(self.poses)
+        pos_word_emb = pos_word_emb.unsqueeze_(1)
+        pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
+        pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)
+
+        m_W = self.vsm_linear(mention_word_pool)
+        vsm_confidences = torch.matmul(m_W, torch.t(pos_word_pool))
+
+        # batch_size = words.size(0)
+        # rule_confidences = torch.zeros(batch_size, self.dict_size)
+        # if torch.cuda.is_available():
+        #     rule_confidences = rule_confidences.cuda(self.gpu)
+        # rule_confidences = rule_confidences.scatter_(1, rules, 1)
+        rule_confidences = rules
+
+        neural_confidences = self.neural_linear(mention_word_pool)
+
+        confidences = self.w1*rule_confidences+self.w2*vsm_confidences+self.w3*neural_confidences
+
+        return confidences
+
+
+    def loss(self, y_pred, y_gold):
+        return self.criterion(y_pred, y_gold)
+
+    def process_one_doc(self, doc, entities, dict):
+
+        Xs, Ys = generate_instances(doc, self.word_alphabet, self.dict_alphabet, dict)
+
+        data_loader = DataLoader(MyDataset(Xs, Ys), opt.batch_size, shuffle=False, collate_fn=my_collate)
+        data_iter = iter(data_loader)
+        num_iter = len(data_loader)
+
+        entity_start = 0
+
+        for i in range(num_iter):
+
+            words, rules, lengths, _ = next(data_iter)
+
+            y_pred = self.forward(words, rules, lengths)
+
+            values, indices = torch.max(y_pred, 1)
+
+            actual_batch_size = lengths.size(0)
+
+            for batch_idx in range(actual_batch_size):
+                entity = entities[entity_start+batch_idx]
+                norm_id = norm_utils.get_dict_name(self.dict_alphabet, indices[batch_idx].item())
+                name = dict[norm_id]
+                entity.norm_ids.append(norm_id)
+                entity.norm_names.append(name)
+
+            entity_start += actual_batch_size
+
+def generate_instances(document, word_alphabet, dict_alphabet, meddra_dict):
+    Xs = []
+    Ys = []
+
+    # copy entities from gold entities
+    pred_entities = []
+    for gold in document.entities:
+        pred = Entity()
+        pred.id = gold.id
+        pred.type = gold.type
+        pred.spans = gold.spans
+        pred.section = gold.section
+        pred.name = gold.name
+        pred_entities.append(pred)
+
+    multi_sieve.runMultiPassSieve(document, pred_entities, meddra_dict)
+
+    for idx, entity in enumerate(document.entities):
+        if len(entity.norm_ids) > 0:
+            Y = norm_utils.get_dict_index(dict_alphabet, entity.norm_ids[0])
+            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                Ys.append(Y)
+            else:
+                continue
+        else:
+            Ys.append(0)
+
+        X = dict()
+
+        tokens = my_tokenize(entity.name)
+        word_ids = []
+        for token in tokens:
+            token = norm_utils.word_preprocess(token)
+            word_id = word_alphabet.get_index(token)
+            word_ids.append(word_id)
+        X['word'] = word_ids
+
+        if pred_entities[idx].rule_id is None:
+            X['rule'] = [0]*norm_utils.get_dict_size(dict_alphabet)
+        else:
+            X['rule'] = [0]*norm_utils.get_dict_size(dict_alphabet)
+            X['rule'][norm_utils.get_dict_index(dict_alphabet, pred_entities[idx].rule_id)] = 1
+
+        Xs.append(X)
+
+    return Xs, Ys
+
+class MyDataset(Dataset):
+
+    def __init__(self, X, Y):
+        self.X = X
+        self.Y = Y
+
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return (self.X[idx], self.Y[idx])
+
+def my_collate(batch):
+    x, y = zip(*batch)
+
+    words = [s['word'] for s in x]
+    rules = [s['rule'] for s in x]
+
+    lengths = [len(row) for row in words]
+    max_len = max(lengths)
+
+    words = pad_sequence(words, max_len)
+    rules = torch.tensor(rules, dtype=torch.float32)
+
+    lengths = torch.LongTensor(lengths)
+    y = torch.LongTensor(y).view(-1)
+
+    if torch.cuda.is_available():
+        words = words.cuda(opt.gpu)
+        rules = rules.cuda(opt.gpu)
+        lengths = lengths.cuda(opt.gpu)
+        y = y.cuda(opt.gpu)
+
+    return words, rules, lengths, y
+
+def pad_sequence(x, max_len):
+
+    padded_x = np.zeros((len(x), max_len), dtype=np.int)
+    for i, row in enumerate(x):
+        padded_x[i][:len(row)] = row
+
+    padded_x = torch.LongTensor(padded_x)
+
+    return padded_x
 
 def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
     logging.info("train the ensemble normalization model ...")
@@ -63,41 +255,60 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
 
     # rule
     logging.info("init rule-based normer")
-    multi_sieve.init(opt, train_data, d)
+    multi_sieve.init(opt, train_data, d, meddra_dict)
 
-    # vsm
-    logging.info("init vsm-based normer")
-    poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, meddra_dict)
-    # alphabet can share between vsm and neural since they don't change
-    # but word_embedding cannot
-    vsm_model = vsm.VsmNormer(word_alphabet, copy.deepcopy(word_embedding), embedding_dim, dict_alphabet, poses)
-    vsm_train_X = []
-    vsm_train_Y = []
-    for doc in train_data:
-        temp_X, temp_Y = vsm.generate_instances(doc.entities, word_alphabet, dict_alphabet)
-        vsm_train_X.extend(temp_X)
-        vsm_train_Y.extend(temp_Y)
-    vsm_train_loader = DataLoader(vsm.MyDataset(vsm_train_X, vsm_train_Y), opt.batch_size, shuffle=True, collate_fn=vsm.my_collate)
-    vsm_optimizer = optim.Adam(vsm_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
-    if opt.tune_wordemb == False:
-        freeze_net(vsm_model.word_embedding)
+    if opt.ensemble == 'learn':
+        logging.info("init ensemble normer")
+        poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, meddra_dict)
+        ensemble_model = Ensemble(word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses)
+        if pretrain_model is not None:
+            ensemble_model.neural_linear.weight.data.copy_(pretrain_model.linear.weight.data)
+        ensemble_train_X = []
+        ensemble_train_Y = []
+        for doc in train_data:
+            temp_X, temp_Y = generate_instances(doc, word_alphabet, dict_alphabet, meddra_dict)
+            ensemble_train_X.extend(temp_X)
+            ensemble_train_Y.extend(temp_Y)
+        ensemble_train_loader = DataLoader(MyDataset(ensemble_train_X, ensemble_train_Y), opt.batch_size, shuffle=True, collate_fn=my_collate)
+        ensemble_optimizer = optim.Adam(ensemble_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
+        if opt.tune_wordemb == False:
+            freeze_net(ensemble_model.word_embedding)
+    else:
 
-    # neural
-    logging.info("init neural-based normer")
-    neural_model = norm_neural.NeuralNormer(word_alphabet, copy.deepcopy(word_embedding), embedding_dim, dict_alphabet)
-    if pretrain_model is not None:
-        # neural_model.attn.W.weight.data.copy_(pretrain_model.attn.W.weight.data)
-        neural_model.linear.weight.data.copy_(pretrain_model.linear.weight.data)
-    neural_train_X = []
-    neural_train_Y = []
-    for doc in train_data:
-        temp_X, temp_Y = norm_neural.generate_instances(doc.entities, word_alphabet, dict_alphabet)
-        neural_train_X.extend(temp_X)
-        neural_train_Y.extend(temp_Y)
-    neural_train_loader = DataLoader(norm_neural.MyDataset(neural_train_X, neural_train_Y), opt.batch_size, shuffle=True, collate_fn=norm_neural.my_collate)
-    neural_optimizer = optim.Adam(neural_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
-    if opt.tune_wordemb == False:
-        freeze_net(neural_model.word_embedding)
+        # vsm
+        logging.info("init vsm-based normer")
+        poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, meddra_dict)
+        # alphabet can share between vsm and neural since they don't change
+        # but word_embedding cannot
+        vsm_model = vsm.VsmNormer(word_alphabet, copy.deepcopy(word_embedding), embedding_dim, dict_alphabet, poses)
+        vsm_train_X = []
+        vsm_train_Y = []
+        for doc in train_data:
+            temp_X, temp_Y = vsm.generate_instances(doc.entities, word_alphabet, dict_alphabet)
+            vsm_train_X.extend(temp_X)
+            vsm_train_Y.extend(temp_Y)
+        vsm_train_loader = DataLoader(vsm.MyDataset(vsm_train_X, vsm_train_Y), opt.batch_size, shuffle=True, collate_fn=vsm.my_collate)
+        vsm_optimizer = optim.Adam(vsm_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
+        if opt.tune_wordemb == False:
+            freeze_net(vsm_model.word_embedding)
+
+        # neural
+        logging.info("init neural-based normer")
+        neural_model = norm_neural.NeuralNormer(word_alphabet, copy.deepcopy(word_embedding), embedding_dim, dict_alphabet)
+        if pretrain_model is not None:
+            # neural_model.attn.W.weight.data.copy_(pretrain_model.attn.W.weight.data)
+            neural_model.linear.weight.data.copy_(pretrain_model.linear.weight.data)
+        neural_train_X = []
+        neural_train_Y = []
+        for doc in train_data:
+            temp_X, temp_Y = norm_neural.generate_instances(doc.entities, word_alphabet, dict_alphabet)
+            neural_train_X.extend(temp_X)
+            neural_train_Y.extend(temp_Y)
+        neural_train_loader = DataLoader(norm_neural.MyDataset(neural_train_X, neural_train_Y), opt.batch_size, shuffle=True, collate_fn=norm_neural.my_collate)
+        neural_optimizer = optim.Adam(neural_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
+        if opt.tune_wordemb == False:
+            freeze_net(neural_model.word_embedding)
+
 
 
     best_dev_f = -10
@@ -110,48 +321,74 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
     for idx in range(opt.iter):
         epoch_start = time.time()
 
-        vsm_model.train()
-        vsm_train_iter = iter(vsm_train_loader)
-        vsm_num_iter = len(vsm_train_loader)
+        if opt.ensemble == 'learn':
 
-        for i in range(vsm_num_iter):
-            x, lengths, y = next(vsm_train_iter)
+            ensemble_model.train()
+            ensemble_train_iter = iter(ensemble_train_loader)
+            ensemble_num_iter = len(ensemble_train_loader)
 
-            l = vsm_model.forward_train(x, lengths, y)
+            for i in range(ensemble_num_iter):
+                x, rules, lengths, y = next(ensemble_train_iter)
 
-            l.backward()
+                y_pred = ensemble_model.forward(x, rules, lengths)
 
-            if opt.gradient_clip > 0:
-                torch.nn.utils.clip_grad_norm_(vsm_model.parameters(), opt.gradient_clip)
-            vsm_optimizer.step()
-            vsm_model.zero_grad()
+                l = ensemble_model.loss(y_pred, y)
+
+                l.backward()
+
+                if opt.gradient_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(ensemble_model.parameters(), opt.gradient_clip)
+                ensemble_optimizer.step()
+                ensemble_model.zero_grad()
 
 
-        neural_model.train()
-        neural_train_iter = iter(neural_train_loader)
-        neural_num_iter = len(neural_train_loader)
+        else:
 
-        for i in range(neural_num_iter):
+            vsm_model.train()
+            vsm_train_iter = iter(vsm_train_loader)
+            vsm_num_iter = len(vsm_train_loader)
 
-            x, lengths, y = next(neural_train_iter)
+            for i in range(vsm_num_iter):
+                x, lengths, y = next(vsm_train_iter)
 
-            y_pred = neural_model.forward(x, lengths)
+                l = vsm_model.forward_train(x, lengths, y)
 
-            l = neural_model.loss(y_pred, y)
+                l.backward()
 
-            l.backward()
+                if opt.gradient_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(vsm_model.parameters(), opt.gradient_clip)
+                vsm_optimizer.step()
+                vsm_model.zero_grad()
 
-            if opt.gradient_clip > 0:
-                torch.nn.utils.clip_grad_norm_(neural_model.parameters(), opt.gradient_clip)
-            neural_optimizer.step()
-            neural_model.zero_grad()
+
+            neural_model.train()
+            neural_train_iter = iter(neural_train_loader)
+            neural_num_iter = len(neural_train_loader)
+
+            for i in range(neural_num_iter):
+
+                x, lengths, y = next(neural_train_iter)
+
+                y_pred = neural_model.forward(x, lengths)
+
+                l = neural_model.loss(y_pred, y)
+
+                l.backward()
+
+                if opt.gradient_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(neural_model.parameters(), opt.gradient_clip)
+                neural_optimizer.step()
+                neural_model.zero_grad()
 
         epoch_finish = time.time()
         logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
 
 
         if opt.dev_file:
-            p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, neural_model)
+            if opt.ensemble == 'learn':
+                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None, ensemble_model)
+            else:
+                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, neural_model, None)
             logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
         else:
             f = best_dev_f
@@ -159,12 +396,18 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
         if f > best_dev_f:
             logging.info("Exceed previous best f score on dev: %.4f" % (best_dev_f))
 
-            if fold_idx is None:
-                torch.save(vsm_model, os.path.join(opt.output, "vsm.pkl"))
-                torch.save(neural_model, os.path.join(opt.output, "norm_neural.pkl"))
+            if opt.ensemble == 'learn':
+                if fold_idx is None:
+                    torch.save(ensemble_model, os.path.join(opt.output, "ensemble.pkl"))
+                else:
+                    torch.save(ensemble_model, os.path.join(opt.output, "ensemble_{}.pkl".format(fold_idx+1)))
             else:
-                torch.save(vsm_model, os.path.join(opt.output, "vsm_{}.pkl".format(fold_idx+1)))
-                torch.save(neural_model, os.path.join(opt.output, "norm_neural_{}.pkl".format(fold_idx + 1)))
+                if fold_idx is None:
+                    torch.save(vsm_model, os.path.join(opt.output, "vsm.pkl"))
+                    torch.save(neural_model, os.path.join(opt.output, "norm_neural.pkl"))
+                else:
+                    torch.save(vsm_model, os.path.join(opt.output, "vsm_{}.pkl".format(fold_idx+1)))
+                    torch.save(neural_model, os.path.join(opt.output, "norm_neural_{}.pkl".format(fold_idx + 1)))
 
             best_dev_f = f
             best_dev_p = p
@@ -190,7 +433,73 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
             multi_sieve.finalize(False)
 
     if len(opt.dev_file) == 0:
-        torch.save(vsm_model, os.path.join(opt.output, "vsm.pkl"))
-        torch.save(neural_model, os.path.join(opt.output, "norm_neural.pkl"))
+        if opt.ensemble == 'learn':
+            torch.save(ensemble_model, os.path.join(opt.output, "ensemble.pkl"))
+        else:
+            torch.save(vsm_model, os.path.join(opt.output, "vsm.pkl"))
+            torch.save(neural_model, os.path.join(opt.output, "norm_neural.pkl"))
 
     return best_dev_p, best_dev_r, best_dev_f
+
+
+def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, dict_alphabet):
+    if opt.ensemble == 'vote':
+
+        for idx, merge_entity in enumerate(merge_entities):
+            entity1 = entities1[idx]
+            entity2 = entities2[idx]
+            entity3 = entities3[idx]
+
+            if entity1.rule_id is None:
+                if entity2.vsm_id == entity3.neural_id:
+                    merge_entity.norm_ids.append(entity2.norm_ids[0])
+                    merge_entity.norm_names.append(entity2.norm_names[0])
+                else:
+                    if entity2.norm_confidences[0] >= entity3.norm_confidences[0]:
+                        merge_entity.norm_ids.append(entity2.norm_ids[0])
+                        merge_entity.norm_names.append(entity2.norm_names[0])
+                    else:
+                        merge_entity.norm_ids.append(entity3.norm_ids[0])
+                        merge_entity.norm_names.append(entity3.norm_names[0])
+            else:
+
+                id_and_ticket = Counter()
+                id_and_ticket[entity1.norm_ids[0]] = id_and_ticket[entity1.norm_ids[0]] +1
+                id_and_ticket[entity2.norm_ids[0]] = id_and_ticket[entity2.norm_ids[0]] +1
+                id_and_ticket[entity3.norm_ids[0]] = id_and_ticket[entity3.norm_ids[0]] +1
+
+                temp_id_name = {}
+                temp_id_name[entity1.norm_ids[0]] = entity1.norm_names[0]
+                temp_id_name[entity2.norm_ids[0]] = entity2.norm_names[0]
+                temp_id_name[entity3.norm_ids[0]] = entity3.norm_names[0]
+
+                top_id, top_ct = id_and_ticket.most_common(1)[0]
+                if top_ct == 1:
+                    # the confidence of rule is always 1
+                    merge_entity.norm_ids.append(entity1.norm_ids[0])
+                    merge_entity.norm_names.append(entity1.norm_names[0])
+                else:
+                    merge_entity.norm_ids.append(top_id)
+                    merge_entity.norm_names.append(temp_id_name[top_id])
+
+    elif opt.ensemble == 'sum':
+
+        for idx, merge_entity in enumerate(merge_entities):
+            entity1 = entities1[idx]
+            entity2 = entities2[idx]
+            entity3 = entities3[idx]
+
+            if entity1.rule_id is None:
+                total = entity2.norm_confidences[0] + entity3.norm_confidences[0]
+            else:
+                total = entity1.norm_confidences[0] + entity2.norm_confidences[0] + entity3.norm_confidences[0]
+
+            index = total.argmax()
+            norm_id = norm_utils.get_dict_name(dict_alphabet, index)
+            norm_name = meddra_dict[norm_id]
+            merge_entity.norm_ids.append(norm_id)
+            merge_entity.norm_names.append(norm_name)
+    else:
+        raise RuntimeError("run configuration")
+
+    return merge_entities

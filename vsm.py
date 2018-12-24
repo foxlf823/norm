@@ -119,7 +119,10 @@ class VsmNormer(nn.Module):
                 name = dict[norm_id]
                 entity.norm_ids.append(norm_id)
                 entity.norm_names.append(name)
-                entity.norm_confidences.append(values[batch_idx].item())
+                if opt.ensemble == 'sum':
+                    entity.norm_confidences.append(similarities[batch_idx].detach().cpu().numpy())
+                else:
+                    entity.norm_confidences.append(values[batch_idx].item())
                 entity.vsm_id = norm_id
 
             entity_start += actual_batch_size

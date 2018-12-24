@@ -9,6 +9,8 @@ from data import get_fda_file
 import logging
 from data_structure import Entity
 import norm_utils
+from options import opt
+import numpy as np
 
 class Util:
     @classmethod
@@ -1696,7 +1698,11 @@ def makedir_and_clear(dir_path):
     else:
         os.makedirs(dir_path)
 
-def init(opt, train_data, d):
+from alphabet import Alphabet
+
+multi_sieve_dict_alphabet = Alphabet('dict')
+
+def init(opt, train_data, d, meddra_dict):
     logging.info("initialize the rule-based normalization model ...")
 
     Ling.setStopwordsList(os.path.join(d.config['norm_rule_resource'], 'stopwords.txt'))
@@ -1728,6 +1734,11 @@ def init(opt, train_data, d):
                 raise RuntimeError("wrong configuration")
 
 
+    if multi_sieve_dict_alphabet.keep_growing:
+        norm_utils.init_dict_alphabet(multi_sieve_dict_alphabet, meddra_dict)
+        norm_utils.fix_alphabet(multi_sieve_dict_alphabet)
+
+
 def runMultiPassSieve(document, entities, meddra_dict):
 
     concepts = list()
@@ -1754,6 +1765,10 @@ def runMultiPassSieve(document, entities, meddra_dict):
                 name = meddra_dict[_id]
                 entity.norm_ids.append(_id)
                 entity.norm_names.append(name)
+                if opt.ensemble == 'sum':
+                    confidences = np.zeros([len(meddra_dict)])
+                    confidences[norm_utils.get_dict_index(multi_sieve_dict_alphabet, _id)] = 1
+                    entity.norm_confidences.append(confidences)
                 if entity.rule_id is None:
                     entity.rule_id = _id
 

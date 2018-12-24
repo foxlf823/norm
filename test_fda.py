@@ -15,6 +15,7 @@ import re
 import vsm
 import norm_neural
 import copy
+import ensemble
 
 def span_to_start(entity):
     ret = ""
@@ -158,15 +159,19 @@ def test(data, opt):
     # initialize norm models
     if opt.norm_rule and opt.norm_vsm and opt.norm_neural: # ensemble
         logging.info("use ensemble normer")
-        multi_sieve.init(opt, None, data)
-        vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
-        vsm_model.eval()
-        neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
-        neural_model.eval()
+        multi_sieve.init(opt, None, data, meddra_dict)
+        if opt.ensemble == 'learn':
+            ensemble_model = torch.load(os.path.join(opt.output, 'ensemble.pkl'))
+            ensemble_model.eval()
+        else:
+            vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
+            vsm_model.eval()
+            neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
+            neural_model.eval()
 
     elif opt.norm_rule:
         logging.info("use rule-based normer")
-        multi_sieve.init(opt, None, data)
+        multi_sieve.init(opt, None, data, meddra_dict)
 
     elif opt.norm_vsm:
         logging.info("use vsm-based normer")
@@ -211,14 +216,18 @@ def test(data, opt):
 
 
                 if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
-                    pred_entities1 = copy.deepcopy(entities)
-                    pred_entities2 = copy.deepcopy(entities)
-                    pred_entities3 = copy.deepcopy(entities)
-                    multi_sieve.runMultiPassSieve(document, pred_entities1, meddra_dict)
-                    vsm_model.process_one_doc(document, pred_entities2, meddra_dict)
-                    neural_model.process_one_doc(document, pred_entities3, meddra_dict)
+                    if opt.ensemble == 'learn':
+                        ensemble_model.process_one_doc(document, entities, meddra_dict)
+                    else:
+                        pred_entities1 = copy.deepcopy(entities)
+                        pred_entities2 = copy.deepcopy(entities)
+                        pred_entities3 = copy.deepcopy(entities)
+                        multi_sieve.runMultiPassSieve(document, pred_entities1, meddra_dict)
+                        vsm_model.process_one_doc(document, pred_entities2, meddra_dict)
+                        neural_model.process_one_doc(document, pred_entities3, meddra_dict)
 
-                    # merge pred_entities1, pred_entities2, pred_entities3 into entities
+                        # merge pred_entities1, pred_entities2, pred_entities3 into entities
+                        ensemble.merge_result(pred_entities1, pred_entities2, pred_entities3, entities, meddra_dict, vsm_model.dict_alphabet)
 
                 elif opt.norm_rule:
                     multi_sieve.runMultiPassSieve(section, entities, meddra_dict)
