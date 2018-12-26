@@ -350,7 +350,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
         logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
 
         if opt.dev_file:
-            p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, None)
+            p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, None, None, d)
             logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
         else:
             f = best_dev_f

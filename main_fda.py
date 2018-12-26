@@ -34,6 +34,7 @@ if opt.random_seed != 0:
 
 if opt.whattodo == 1:
     d = data.Data(opt)
+    logging.info(d.config)
 
     makedir_and_clear(opt.output)
 
@@ -154,6 +155,7 @@ if opt.whattodo == 1:
 
 elif opt.whattodo == 2:
     d = data.Data(opt)
+    logging.info(d.config)
 
     makedir_and_clear(opt.output)
 
@@ -248,6 +250,10 @@ else:
 
     d = data.Data(opt)
     d.load(os.path.join(opt.output, "data.pkl"))
+
+    d_new = data.Data(opt)
+    d.config = d_new.config
+    logging.info(d.config)
 
     test_fda.test(d, opt)
 

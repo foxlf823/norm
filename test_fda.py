@@ -161,12 +161,20 @@ def test(data, opt):
         logging.info("use ensemble normer")
         multi_sieve.init(opt, None, data, meddra_dict)
         if opt.ensemble == 'learn':
-            ensemble_model = torch.load(os.path.join(opt.output, 'ensemble.pkl'))
+            if opt.test_in_cpu:
+                ensemble_model = torch.load(os.path.join(opt.output, 'ensemble.pkl'), map_location='cpu')
+            else:
+                ensemble_model = torch.load(os.path.join(opt.output, 'ensemble.pkl'))
             ensemble_model.eval()
         else:
-            vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
+            if opt.test_in_cpu:
+                vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'), map_location='cpu')
+                neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'), map_location='cpu')
+            else:
+                vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
+                neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
+
             vsm_model.eval()
-            neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
             neural_model.eval()
 
     elif opt.norm_rule:
@@ -175,14 +183,18 @@ def test(data, opt):
 
     elif opt.norm_vsm:
         logging.info("use vsm-based normer")
-        logging.info("load model from {}".format(os.path.join(opt.output, "vsm.pkl")))
-        vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
+        if opt.test_in_cpu:
+            vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'), map_location='cpu')
+        else:
+            vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
         vsm_model.eval()
 
     elif opt.norm_neural:
         logging.info("use neural-based normer")
-        logging.info("load model from {}".format(os.path.join(opt.output, "norm_neural.pkl")))
-        neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
+        if opt.test_in_cpu:
+            neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'), map_location='cpu')
+        else:
+            neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
         neural_model.eval()
     else:
         logging.info("no normalization is performed.")

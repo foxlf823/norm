@@ -1800,7 +1800,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     best_dev_r = -10
 
     if opt.dev_file:
-        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None)
+        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None, None, d)
         logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
     else:
         f = best_dev_f

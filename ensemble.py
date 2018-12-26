@@ -37,7 +37,16 @@ class Ensemble(nn.Module):
         self.vsm_linear = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
         self.vsm_linear.weight.data.copy_(torch.eye(self.embedding_dim))
 
-        self.neural_linear = nn.Linear(self.embedding_dim, norm_utils.get_dict_size(self.dict_alphabet), bias=False)
+        self.neural_linear = nn.Linear(self.embedding_dim, self.dict_size, bias=False)
+
+        # self.hidden_size = 2500
+        # self.dropout = nn.Dropout(opt.dropout)
+        # self.hidden = nn.Linear(3*self.dict_size, self.hidden_size)
+        # self.relu = nn.ReLU()
+        #
+        # self.output = nn.Linear(self.hidden_size, self.dict_size)
+
+        self.output = nn.Linear(3*self.dict_size, self.dict_size)
 
         self.criterion = nn.CrossEntropyLoss()
 
@@ -46,15 +55,18 @@ class Ensemble(nn.Module):
             self.vsm_linear = self.vsm_linear.cuda(self.gpu)
             self.neural_linear = self.neural_linear.cuda(self.gpu)
 
+            # self.hidden = self.hidden.cuda(self.gpu)
+            self.output = self.output.cuda(self.gpu)
 
-        if torch.cuda.is_available():
-            self.w1 = torch.nn.Parameter(torch.tensor([0.3]).cuda(self.gpu))
-            self.w2 = torch.nn.Parameter(torch.tensor([0.4]).cuda(self.gpu))
-            self.w3 = torch.nn.Parameter(torch.tensor([0.3]).cuda(self.gpu))
-        else:
-            self.w1 = torch.nn.Parameter(torch.tensor([0.3]))
-            self.w2 = torch.nn.Parameter(torch.tensor([0.4]))
-            self.w3 = torch.nn.Parameter(torch.tensor([0.3]))
+
+        # if torch.cuda.is_available():
+        #     self.w1 = torch.nn.Parameter(torch.tensor([0.3]).cuda(self.gpu))
+        #     self.w2 = torch.nn.Parameter(torch.tensor([0.4]).cuda(self.gpu))
+        #     self.w3 = torch.nn.Parameter(torch.tensor([0.3]).cuda(self.gpu))
+        # else:
+        #     self.w1 = torch.nn.Parameter(torch.tensor([0.3]))
+        #     self.w2 = torch.nn.Parameter(torch.tensor([0.4]))
+        #     self.w3 = torch.nn.Parameter(torch.tensor([0.3]))
 
     def forward(self, words, rules, lengths):
 
@@ -72,6 +84,7 @@ class Ensemble(nn.Module):
 
         m_W = self.vsm_linear(mention_word_pool)
         vsm_confidences = torch.matmul(m_W, torch.t(pos_word_pool))
+        vsm_confidences = functional.softmax(vsm_confidences, dim=1)
 
         # batch_size = words.size(0)
         # rule_confidences = torch.zeros(batch_size, self.dict_size)
@@ -81,14 +94,45 @@ class Ensemble(nn.Module):
         rule_confidences = rules
 
         neural_confidences = self.neural_linear(mention_word_pool)
+        neural_confidences = functional.softmax(neural_confidences, dim=1)
 
-        confidences = self.w1*rule_confidences+self.w2*vsm_confidences+self.w3*neural_confidences
+        # confidences = self.w1*rule_confidences+self.w2*vsm_confidences+self.w3*neural_confidences
+
+        # confidences = self.w1 * rule_confidences + self.w2 * vsm_confidences \
+        #               + self.w3 * neural_confidences
+
+        x = torch.cat((rule_confidences, vsm_confidences, neural_confidences), 1)
+        # x = self.relu(self.hidden(self.dropout(x)))
+        confidences = self.output(x)
 
         return confidences
 
 
     def loss(self, y_pred, y_gold):
         return self.criterion(y_pred, y_gold)
+
+    # def normalize(self):
+    #
+    #     e_w1 = torch.exp(self.w1.data)
+    #     e_w2 = torch.exp(self.w2.data)
+    #     e_w3 = torch.exp(self.w3.data)
+    #     e = e_w1+e_w2+e_w3+1e-8
+    #
+    #     self.w1.data = e_w1 / e
+    #     self.w2.data = e_w2 / e
+    #     self.w3.data = e_w3 / e
+
+        # min = 99999
+        # max = -99999
+        # for x in [self.w1, self.w2, self.w3]:
+        #     if x < min:
+        #         min = x.data
+        #     if x > max:
+        #         max = x.data
+        #
+        # self.w1.data = (self.w1.data-min)/(max-min)
+        # self.w2.data = (self.w2.data- min) / (max - min)
+        # self.w3.data = (self.w3.data- min) / (max - min)
 
     def process_one_doc(self, doc, entities, dict):
 
@@ -386,9 +430,10 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
 
         if opt.dev_file:
             if opt.ensemble == 'learn':
-                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None, ensemble_model)
+                # logging.info("weight w1: %.4f, w2: %.4f, w3: %.4f" % (ensemble_model.w1.data.item(), ensemble_model.w2.data.item(), ensemble_model.w3.data.item()))
+                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None, ensemble_model, d)
             else:
-                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, neural_model, None)
+                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, neural_model, None, d)
             logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
         else:
             f = best_dev_f
@@ -442,7 +487,7 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx, pretrain_model):
     return best_dev_p, best_dev_r, best_dev_f
 
 
-def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, dict_alphabet):
+def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, dict_alphabet, d):
     if opt.ensemble == 'vote':
 
         for idx, merge_entity in enumerate(merge_entities):
@@ -455,12 +500,17 @@ def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, d
                     merge_entity.norm_ids.append(entity2.norm_ids[0])
                     merge_entity.norm_names.append(entity2.norm_names[0])
                 else:
-                    if entity2.norm_confidences[0] >= entity3.norm_confidences[0]:
-                        merge_entity.norm_ids.append(entity2.norm_ids[0])
-                        merge_entity.norm_names.append(entity2.norm_names[0])
-                    else:
-                        merge_entity.norm_ids.append(entity3.norm_ids[0])
-                        merge_entity.norm_names.append(entity3.norm_names[0])
+                    # if entity2.norm_confidences[0] >= entity3.norm_confidences[0]:
+                    #     merge_entity.norm_ids.append(entity2.norm_ids[0])
+                    #     merge_entity.norm_names.append(entity2.norm_names[0])
+                    # else:
+                    #     merge_entity.norm_ids.append(entity3.norm_ids[0])
+                    #     merge_entity.norm_names.append(entity3.norm_names[0])
+
+                    # vsm is prior to others
+                    merge_entity.norm_ids.append(entity2.norm_ids[0])
+                    merge_entity.norm_names.append(entity2.norm_names[0])
+
             else:
 
                 id_and_ticket = Counter()
@@ -476,8 +526,12 @@ def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, d
                 top_id, top_ct = id_and_ticket.most_common(1)[0]
                 if top_ct == 1:
                     # the confidence of rule is always 1
-                    merge_entity.norm_ids.append(entity1.norm_ids[0])
-                    merge_entity.norm_names.append(entity1.norm_names[0])
+                    # merge_entity.norm_ids.append(entity1.norm_ids[0])
+                    # merge_entity.norm_names.append(entity1.norm_names[0])
+
+                    # vsm is prior to others
+                    merge_entity.norm_ids.append(entity2.norm_ids[0])
+                    merge_entity.norm_names.append(entity2.norm_names[0])
                 else:
                     merge_entity.norm_ids.append(top_id)
                     merge_entity.norm_names.append(temp_id_name[top_id])
@@ -490,9 +544,13 @@ def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, d
             entity3 = entities3[idx]
 
             if entity1.rule_id is None:
-                total = entity2.norm_confidences[0] + entity3.norm_confidences[0]
+
+                total = float(d.config['norm_ensumble_sum_weight']['1']['w2'])*entity2.norm_confidences[0] + \
+                        float(d.config['norm_ensumble_sum_weight']['1']['w3'])*entity3.norm_confidences[0]
             else:
-                total = entity1.norm_confidences[0] + entity2.norm_confidences[0] + entity3.norm_confidences[0]
+                total = float(d.config['norm_ensumble_sum_weight']['2']['w1'])*entity1.norm_confidences[0] + \
+                        float(d.config['norm_ensumble_sum_weight']['2']['w2'])*entity2.norm_confidences[0] + \
+                        float(d.config['norm_ensumble_sum_weight']['2']['w3'])*entity3.norm_confidences[0]
 
             index = total.argmax()
             norm_id = norm_utils.get_dict_name(dict_alphabet, index)

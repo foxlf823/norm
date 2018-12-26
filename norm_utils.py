@@ -51,7 +51,7 @@ def get_dict_size(dict_alphabet):
     return dict_alphabet.size()-2
 
 
-def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model):
+def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model, d):
     if vsm_model is not None :
         vsm_model.eval()
 
@@ -162,7 +162,7 @@ def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model):
                     if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
                         ct_correct += 1
             else:
-                ensemble.merge_result(pred_entities, pred_entities2, pred_entities3, merge_entities, meddra_dict, vsm_model.dict_alphabet)
+                ensemble.merge_result(pred_entities, pred_entities2, pred_entities3, merge_entities, meddra_dict, vsm_model.dict_alphabet, d)
 
                 ct_gold += len(document.entities)
                 ct_predicted += len(merge_entities)
