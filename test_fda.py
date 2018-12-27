@@ -229,17 +229,17 @@ def test(data, opt):
 
                 if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
                     if opt.ensemble == 'learn':
-                        ensemble_model.process_one_doc(document, entities, meddra_dict)
+                        ensemble_model.process_one_doc(section, entities, meddra_dict)
                     else:
                         pred_entities1 = copy.deepcopy(entities)
                         pred_entities2 = copy.deepcopy(entities)
                         pred_entities3 = copy.deepcopy(entities)
-                        multi_sieve.runMultiPassSieve(document, pred_entities1, meddra_dict)
-                        vsm_model.process_one_doc(document, pred_entities2, meddra_dict)
-                        neural_model.process_one_doc(document, pred_entities3, meddra_dict)
+                        multi_sieve.runMultiPassSieve(section, pred_entities1, meddra_dict)
+                        vsm_model.process_one_doc(section, pred_entities2, meddra_dict)
+                        neural_model.process_one_doc(section, pred_entities3, meddra_dict)
 
                         # merge pred_entities1, pred_entities2, pred_entities3 into entities
-                        ensemble.merge_result(pred_entities1, pred_entities2, pred_entities3, entities, meddra_dict, vsm_model.dict_alphabet)
+                        ensemble.merge_result(pred_entities1, pred_entities2, pred_entities3, entities, meddra_dict, vsm_model.dict_alphabet, data)
 
                 elif opt.norm_rule:
                     multi_sieve.runMultiPassSieve(section, entities, meddra_dict)

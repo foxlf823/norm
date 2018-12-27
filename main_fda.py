@@ -130,12 +130,17 @@ if opt.whattodo == 1:
         else:
             logging.info("no dev data, the model will be saved after training finish")
 
+        if opt.test_file:
+            d.test_data = data.load_data_fda(opt.test_file, False, opt.types, opt.type_filter, True, False)
+
 
 
         logging.info("build alphabet ...")
         d.build_alphabet(d.train_data)
         if opt.dev_file:
             d.build_alphabet(d.dev_data)
+        if opt.test_file:
+            d.build_alphabet(d.test_data)
         d.fix_alphabet()
 
         logging.info("generate instance ...")
@@ -226,6 +231,11 @@ elif opt.whattodo == 2:
             logging.info("no dev data, the model will be saved after training finish")
             dev_data = None
 
+        if opt.test_file:
+            test_data = data.load_data_fda(opt.test_file, False, opt.types, opt.type_filter, True, True)
+        else:
+            test_data = None
+
         meddra_dict = load_meddra_dict(d)
 
         if opt.norm_neural:
@@ -235,11 +245,11 @@ elif opt.whattodo == 2:
                 neural_model = None
 
         if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
-            ensemble.train(train_data, dev_data, d, meddra_dict, opt, None, neural_model)
+            ensemble.train(train_data, dev_data, test_data, d, meddra_dict, opt, None, neural_model)
         elif opt.norm_vsm:
-            vsm.train(train_data, dev_data, d, meddra_dict, opt, None)
+            vsm.train(train_data, dev_data, test_data, d, meddra_dict, opt, None)
         elif opt.norm_neural:
-            norm_neural.train(train_data, dev_data, d, meddra_dict, opt, None, neural_model)
+            norm_neural.train(train_data, dev_data, test_data, d, meddra_dict, opt, None, neural_model)
         else:
             raise RuntimeError("wrong configuration")
 

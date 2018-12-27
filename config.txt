@@ -1,11 +1,16 @@
-ner_feature=[POS] emb_size=20
-ner_feature=[Cap] emb_size=10
-#ext_corpus=made path=/Users/feili/Desktop/umass/bioC_data/other_debug/cardio_data types=ADE
-#ext_corpus=cardio path=/Users/feili/Desktop/umass/bioC_data/other_debug/cardio_data
-#ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml_debug types=AdverseReaction
-#elmo_path=/Users/feili/resource/data_to_train_emb/elmo_ade_lower_0norm_200d
-elmo_path=/Users/feili/project/ELMoForManyLangs/output/en
-norm_rule_dict=/Users/feili/PycharmProjects/norm/meddra_dict.txt
+#ner_feature=[POS] emb_size=20
+#ner_feature=[Cap] emb_size=10
+#ext_corpus=made path=/Users/feili/Desktop/umass/bioC_data/other1/made types=ADE
+#ext_corpus=cardio path=/Users/feili/Desktop/umass/bioC_data/other/cardio_data types=ADE
+#ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml types=AdverseReaction
+elmo_path=/Users/feili/project/ELMoForManyLangs/elmo_ade_meddra_lower_0norm_200d
+norm_dict=/Users/feili/PycharmProjects/norm/meddra_dict.txt
+#norm_ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml
+#norm_emb=/Users/feili/resource/data_to_train_emb/fasttext_ade_meddra_lower_0norm_200d.vec
 norm_rule_resource=/Users/feili/project/disorder-normalizer/resources
-norm_rule_num=100
-norm_rule_ext_corpus=tac path=/Users/feili/dataset/tac_2017_ade/train_xml_debug
+norm_rule_num=12
+norm_rule_use_trainset=1
+norm_neural_pretrain=0
+norm_neural_pretrain_accuracy=99
+norm_ensumble_sum_weight=1 w2=0.6 w3=0.4
+norm_ensumble_sum_weight=2 w1=0.3 w2=0.4 w3=0.3

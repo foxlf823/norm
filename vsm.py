@@ -250,7 +250,7 @@ def pad_sequence(x, max_len):
     return padded_x
 
 
-def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
+def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx):
     logging.info("train the vsm-based normalization model ...")
 
     external_train_data = []
@@ -270,6 +270,8 @@ def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
     norm_utils.build_alphabet(word_alphabet, train_data)
     if opt.dev_file:
         norm_utils.build_alphabet(word_alphabet, dev_data)
+    if opt.test_file:
+        norm_utils.build_alphabet(word_alphabet, test_data)
     norm_utils.fix_alphabet(word_alphabet)
 
     if d.config.get('norm_emb') is not None:

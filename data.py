@@ -806,7 +806,8 @@ class Data:
                     if opt.number_normalized:
                         word = normalize_word(word)
                     self.word_alphabet.add(word)
-                    self.label_alphabet.add(token['label'])
+                    if token.get('label') is not None:
+                        self.label_alphabet.add(token['label'])
                     # try:
                     #     self.label_alphabet.add(token['label'])
                     # except Exception, e:
