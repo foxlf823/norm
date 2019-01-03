@@ -5,7 +5,7 @@ from my_utils import evaluate, makedir_and_clear
 import codecs
 from os.path import isfile, join
 from os import listdir
-import spacy
+# import spacy
 from data import processOneFile, read_instance_from_one_document
 import bioc
 from data_structure import Entity

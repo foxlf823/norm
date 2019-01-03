@@ -19,16 +19,16 @@ import fda_xml_handler
 def getLabel(start, end, entities):
     match = ""
     for entity in entities:
-        if start == entity.start and end == entity.end : # S
+        if start == entity.spans[0][0] and end == entity.spans[0][1] : # S
             match = "S"
             break
-        elif start == entity.start and end != entity.end : # B
+        elif start == entity.spans[0][0] and end != entity.spans[0][1] : # B
             match = "B"
             break
-        elif start != entity.start and end == entity.end : # E
+        elif start != entity.spans[0][0] and end == entity.spans[0][1] : # E
             match = "E"
             break
-        elif start > entity.start and end < entity.end:  # M
+        elif start > entity.spans[0][0] and end < entity.spans[0][1]:  # M
             match = "M"
             break
 
