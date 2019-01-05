@@ -86,9 +86,12 @@ class NeuralNormer(nn.Module):
 
         return functional.softmax(y_pred, dim=1)
 
-    def process_one_doc(self, doc, entities, dict):
+    def process_one_doc(self, doc, entities, dictionary, dictionary_reverse, isMeddra_dict):
 
-        Xs, Ys = generate_instances(entities, self.word_alphabet, self.dict_alphabet)
+        if isMeddra_dict:
+            Xs, Ys = generate_instances(entities, self.word_alphabet, self.dict_alphabet)
+        else:
+            Xs, Ys = generate_instances_ehr(entities, self.word_alphabet, self.dict_alphabet, dictionary_reverse)
 
         data_loader = DataLoader(MyDataset(Xs, Ys), opt.batch_size, shuffle=False, collate_fn=my_collate)
         data_iter = iter(data_loader)
@@ -111,9 +114,15 @@ class NeuralNormer(nn.Module):
             for batch_idx in range(actual_batch_size):
                 entity = entities[entity_start+batch_idx]
                 norm_id = norm_utils.get_dict_name(self.dict_alphabet, indices[batch_idx].item())
-                name = dict[norm_id]
-                entity.norm_ids.append(norm_id)
-                entity.norm_names.append(name)
+                if isMeddra_dict:
+                    name = dictionary[norm_id]
+                    entity.norm_ids.append(norm_id)
+                    entity.norm_names.append(name)
+                else:
+                    concept = dictionary[norm_id]
+                    entity.norm_ids.append(norm_id)
+                    entity.norm_names.append(concept.names)
+
                 if opt.ensemble == 'sum':
                     entity.norm_confidences.append(y_pred[batch_idx].detach().cpu().numpy())
                 else:
@@ -164,7 +173,36 @@ def generate_instances(entities, word_alphabet, dict_alphabet):
 
         Xs.append(word_ids)
 
+    return Xs, Ys
 
+def generate_instances_ehr(entities, word_alphabet, dict_alphabet, dictionary_reverse):
+    Xs = []
+    Ys = []
+
+    for entity in entities:
+        if len(entity.norm_ids) > 0:
+            if entity.norm_ids[0] in dictionary_reverse:
+                cui_list = dictionary_reverse[entity.norm_ids[0]]
+                Y = norm_utils.get_dict_index(dict_alphabet, cui_list[0])  # use the first id to generate instance
+                if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                    Ys.append(Y)
+                else:
+                    raise RuntimeError("entity {}, {}, cui not in dict_alphabet".format(entity.id, entity.name))
+            else:
+                logging.info("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
+                continue
+        else:
+            Ys.append(0)
+
+
+        tokens = my_tokenize(entity.name)
+        word_ids = []
+        for token in tokens:
+            token = norm_utils.word_preprocess(token)
+            word_id = word_alphabet.get_index(token)
+            word_ids.append(word_id)
+
+        Xs.append(word_ids)
 
     return Xs, Ys
 
@@ -204,38 +242,58 @@ def pad_sequence(x, max_len):
 
     return padded_x
 
-def generate_dict_instances(meddra_dict, dict_alphabet, word_alphabet):
+def generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_dict):
     Xs = []
     Ys = []
 
-    for concept_id, concept_name in meddra_dict.items():
+    if isMeddra_dict:
+        for concept_id, concept_name in dictionary.items():
 
-        Y = norm_utils.get_dict_index(dict_alphabet, concept_id)
-        if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
-            Ys.append(Y)
-        else:
-            continue
+            Y = norm_utils.get_dict_index(dict_alphabet, concept_id)
+            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                Ys.append(Y)
+            else:
+                continue
 
 
-        tokens = my_tokenize(concept_name)
-        word_ids = []
-        for token in tokens:
-            token = norm_utils.word_preprocess(token)
-            word_id = word_alphabet.get_index(token)
-            word_ids.append(word_id)
+            tokens = my_tokenize(concept_name)
+            word_ids = []
+            for token in tokens:
+                token = norm_utils.word_preprocess(token)
+                word_id = word_alphabet.get_index(token)
+                word_ids.append(word_id)
 
-        Xs.append(word_ids)
+            Xs.append(word_ids)
+    else :
+        for concept_id, concept in dictionary.items():
+            Y = norm_utils.get_dict_index(dict_alphabet, concept_id)
+            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                pass
+            else:
+                continue
+
+            for concept_name in concept.names:
+
+                tokens = my_tokenize(concept_name)
+                word_ids = []
+                for token in tokens:
+                    token = norm_utils.word_preprocess(token)
+                    word_id = word_alphabet.get_index(token)
+                    word_ids.append(word_id)
+
+                Ys.append(Y)
+                Xs.append(word_ids)
 
 
     return Xs, Ys
 
 
-def dict_pretrain(meddra_dict, d):
+def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict):
     logging.info('use dict pretrain ...')
 
     logging.info("build alphabet ...")
     word_alphabet = Alphabet('word')
-    norm_utils.build_alphabet_from_dict(word_alphabet, meddra_dict)
+    norm_utils.build_alphabet_from_dict(word_alphabet, dictionary, isMeddra_dict)
     norm_utils.fix_alphabet(word_alphabet)
 
     if d.config.get('norm_emb') is not None:
@@ -254,12 +312,12 @@ def dict_pretrain(meddra_dict, d):
         embedding_dim = d.word_emb_dim
 
     dict_alphabet = Alphabet('dict')
-    norm_utils.init_dict_alphabet(dict_alphabet, meddra_dict)
+    norm_utils.init_dict_alphabet(dict_alphabet, dictionary)
     norm_utils.fix_alphabet(dict_alphabet)
 
     neural_model = NeuralNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet)
 
-    dict_Xs, dict_Ys = generate_dict_instances(meddra_dict, dict_alphabet, word_alphabet)
+    dict_Xs, dict_Ys = generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_dict)
 
     data_loader = DataLoader(MyDataset(dict_Xs, dict_Ys), opt.batch_size, shuffle=True, collate_fn=my_collate)
 
@@ -313,40 +371,8 @@ def dict_pretrain(meddra_dict, d):
 
     return neural_model
 
-def dump_wordemb(word_embedding):
-    with open("./dump_emb.txt", 'w') as fp:
-        tensor = word_embedding.weight.data
-        for row in range(tensor.size(0)):
 
-            for col in range(tensor.size(1)):
-                fp.write(str(tensor[row][col].item())+" ")
-            fp.write("\n")
-
-    exit(-1)
-
-def check_nan2d(tensor):
-    for row in range(tensor.size(0)):
-
-        for col in range(tensor.size(1)):
-            if math.isinf(tensor[row][col].item()) or math.isnan(tensor[row][col].item()):
-                logging.error(tensor[row][col])
-                logging.error(tensor[row])
-                logging.error("{} {}".format(row, col))
-                exit(1)
-
-
-def check_nan3d(tensor):
-    for i in range(tensor.size(0)):
-        for j in range(tensor.size(1)):
-            for k in range(tensor.size(2)):
-                if math.isinf(tensor[i][j][k].item()) or math.isnan(tensor[i][j][k].item()):
-                    logging.error(tensor)
-                    logging.error("{} {} {}".format(i, j, k))
-                    exit(1)
-
-
-
-def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretrain_model):
+def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, pretrain_model, isMeddra_dict):
     logging.info("train the neural-based normalization model ...")
 
     external_train_data = []
@@ -361,7 +387,7 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
 
     logging.info("build alphabet ...")
     word_alphabet = Alphabet('word')
-    norm_utils.build_alphabet_from_dict(word_alphabet, meddra_dict)
+    norm_utils.build_alphabet_from_dict(word_alphabet, dictionary, isMeddra_dict)
     norm_utils.build_alphabet(word_alphabet, train_data)
     if opt.dev_file:
         norm_utils.build_alphabet(word_alphabet, dev_data)
@@ -388,7 +414,7 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
 
 
     dict_alphabet = Alphabet('dict')
-    norm_utils.init_dict_alphabet(dict_alphabet, meddra_dict)
+    norm_utils.init_dict_alphabet(dict_alphabet, dictionary)
     norm_utils.fix_alphabet(dict_alphabet)
 
     neural_model = NeuralNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet)
@@ -399,7 +425,10 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
     train_X = []
     train_Y = []
     for doc in train_data:
-        temp_X, temp_Y = generate_instances(doc.entities, word_alphabet, dict_alphabet)
+        if isMeddra_dict:
+            temp_X, temp_Y = generate_instances(doc.entities, word_alphabet, dict_alphabet)
+        else:
+            temp_X, temp_Y = generate_instances_ehr(doc.entities, word_alphabet, dict_alphabet, dictionary_reverse)
         train_X.extend(temp_X)
         train_Y.extend(temp_Y)
 
@@ -434,9 +463,6 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
             y_pred = neural_model.forward(x, lengths)
 
             l = neural_model.loss(y_pred, y)
-            # debug feili
-            # if str(l.item()) == 'nan':
-            #     logging.error("loss: {}".format(l.item()))
 
             l.backward()
 
@@ -449,7 +475,7 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
         logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
 
         if opt.dev_file:
-            p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, neural_model, None, d)
+            p, r, f = norm_utils.evaluate(dev_data, dictionary, dictionary_reverse, None, neural_model, None, d, isMeddra_dict)
             logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
         else:
             f = best_dev_f

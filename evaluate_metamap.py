@@ -5,6 +5,8 @@ from os.path import isfile, join
 import os
 from my_utils import get_bioc_file
 from data_structure import Entity,Document
+import logging
+from norm_utils import evaluate_for_ehr
 
 type_we_care = set(['ADE','SSLIF', 'Indication'])
 
@@ -20,23 +22,24 @@ def parse_bioc(directory, fileName):
         if entity.infons['type'] not in type_we_care:
             continue
 
-
-        if ('SNOMED code' in entity.infons and entity.infons['SNOMED code'] != 'N/A'):
-            id = entity.infons['SNOMED code']
-        elif ('MedDRA code' in entity.infons and entity.infons['MedDRA code'] != 'N/A'):
-            id = entity.infons['MedDRA code']
-        else:
-            print("annotation error, ignored: {} in {}".format(entity.id, fileName))
-            continue
-
         entity_ = Entity()
-        if isinstance(entity.text, str):
-            text = entity.text.decode('utf-8')
-        else:  # unicode
-            text = entity.text
-        entity_.create(entity.id, entity.infons['type'], entity.locations[0].offset, entity.locations[0].end,
-                       text, None, None, None)
-        entity_.norm_id = id
+        entity_.id = entity.id
+        entity_.name = entity.text
+        entity_.type = entity.infons['type']
+        entity_.spans.append([entity.locations[0].offset, entity.locations[0].end])
+
+        if ('SNOMED code' in entity.infons and entity.infons['SNOMED code'] != 'N/A') \
+                and ('SNOMED term' in entity.infons and entity.infons['SNOMED term'] != 'N/A'):
+            entity_.norm_ids.append(entity.infons['SNOMED code'])
+            entity_.norm_names.append(entity.infons['SNOMED term'])
+
+        elif ('MedDRA code' in entity.infons and entity.infons['MedDRA code'] != 'N/A') \
+                and ('MedDRA term' in entity.infons and entity.infons['MedDRA term'] != 'N/A'):
+            entity_.norm_ids.append(entity.infons['MedDRA code'])
+            entity_.norm_names.append(entity.infons['MedDRA term'])
+        else:
+            logging.debug("{}: no norm id in entity {}".format(fileName, entity.id))
+            # some entities may have no norm id
 
         entities.append(entity_)
 
@@ -49,17 +52,19 @@ if __name__=="__main__":
 
 
     print("load umls ...")
-    UMLS_dict = umls.load_umls_MRCONSO("/Users/feili/UMLS/2016AA/META/MRCONSO.RRF")
+    UMLS_dict, _ = umls.load_umls_MRCONSO("/Users/feili/UMLS/2016AA_Snomed_Meddra/META/MRCONSO.RRF")
 
     # base_dir =
     predict_dir = "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap"
     gold_dir = "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/bioc"
 
-    ct_predict = 0
-    ct_gold = 0
-    ct_norm_correct = 0
-
+    ct_ner_predict = 0
+    ct_ner_gold = 0
     ct_ner_correct = 0
+
+    ct_norm_predict = 0
+    ct_norm_gold = 0
+    ct_norm_correct = 0
 
 
     for gold_file_name in listdir(gold_dir):
@@ -68,8 +73,8 @@ if __name__=="__main__":
 
         predict_document = metamap.load_metamap_result_from_file(join(predict_dir, gold_file_name[:gold_file_name.find('.')]+".field.txt"))
 
-        ct_gold += len(gold_document.entities)
-        ct_predict += len(predict_document.entities)
+        ct_ner_gold += len(gold_document.entities)
+        ct_ner_predict += len(predict_document.entities)
 
         for predict_entity in predict_document.entities:
 
@@ -79,26 +84,27 @@ if __name__=="__main__":
 
                     ct_ner_correct += 1
 
-                    if predict_entity.norm_id in UMLS_dict:
-                        concept = UMLS_dict[predict_entity.norm_id]
-
-                        if gold_entity.norm_id in concept.codes:
-                            ct_norm_correct += 1
-
                     break
 
 
 
+        p1, p2, p3 = evaluate_for_ehr(gold_document.entities, predict_document.entities, UMLS_dict)
+
+        ct_norm_gold += p1
+        ct_norm_predict += p2
+        ct_norm_correct += p3
 
 
 
-    p = ct_ner_correct*1.0/ct_predict
-    r = ct_ner_correct*1.0/ct_gold
+
+
+    p = ct_ner_correct*1.0/ct_ner_predict
+    r = ct_ner_correct*1.0/ct_ner_gold
     f1 = 2.0*p*r/(p+r)
     print("NER p: %.4f | r: %.4f | f1: %.4f" % (p, r, f1))
 
-    p = ct_norm_correct*1.0/ct_predict
-    r = ct_norm_correct*1.0/ct_gold
+    p = ct_norm_correct*1.0/ct_norm_predict
+    r = ct_norm_correct*1.0/ct_norm_gold
     f1 = 2.0*p*r/(p+r)
     print("NORM p: %.4f | r: %.4f | f1: %.4f" % (p, r, f1))
 

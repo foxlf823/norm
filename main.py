@@ -10,6 +10,11 @@ import data
 import train
 import test
 from my_utils import makedir_and_clear
+import umls
+import norm_neural
+import vsm
+import ensemble
+import multi_sieve
 
 logger = logging.getLogger()
 if opt.verbose:
@@ -59,6 +64,40 @@ if opt.whattodo == 1:
 
     d.clear() # clear some data due it's useless when test
     d.save(os.path.join(opt.output, "data.pkl"))
+
+elif opt.whattodo == 2:
+    logging.info(d.config)
+
+    makedir_and_clear(opt.output)
+
+    logging.info("load data ...")
+    train_data = data.loadData(opt.train_file, True, opt.types, opt.type_filter)
+    dev_data = data.loadData(opt.dev_file, True, opt.types, opt.type_filter)
+    if opt.test_file:
+        test_data = data.loadData(opt.test_file, False, opt.types, opt.type_filter)
+    else:
+        test_data = None
+
+    logging.info("load dict ...")
+    UMLS_dict, UMLS_dict_reverse = umls.load_umls_MRCONSO(d.config['norm_dict'])
+    logging.info("dict concept number {}".format(len(UMLS_dict)))
+
+    if opt.norm_neural:
+        if d.config['norm_neural_pretrain'] == '1':
+            neural_model = norm_neural.dict_pretrain(UMLS_dict, UMLS_dict_reverse, d, False)
+        else:
+            neural_model = None
+
+    if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
+        ensemble.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, neural_model, False)
+    elif opt.norm_rule:
+        p, r, f = multi_sieve.train(train_data, dev_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, False)
+    elif opt.norm_vsm:
+        vsm.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, False)
+    elif opt.norm_neural:
+        norm_neural.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, neural_model, False)
+    else:
+        raise RuntimeError("wrong configuration")
 
 else:
     d.load(os.path.join(opt.output, "data.pkl"))

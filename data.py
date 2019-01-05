@@ -324,6 +324,11 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, t
     document = Document()
     document.name = fileName[:fileName.find('.')]
 
+
+    ct_snomed = 0
+    ct_meddra = 0
+    ct_unnormed = 0
+
     if annotation_dir:
         annotation_file = get_bioc_file(join(annotation_dir, fileName))
         bioc_passage = annotation_file[0].passages[0]
@@ -334,13 +339,29 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, t
                 continue
             entity_ = Entity()
             entity_.id = entity.id
+            entity_.name = entity.text
             entity_.type = entity.infons['type']
             entity_.spans.append([entity.locations[0].offset,entity.locations[0].end])
+            if ('SNOMED code' in entity.infons and entity.infons['SNOMED code'] != 'N/A')\
+                    and ('SNOMED term' in entity.infons and entity.infons['SNOMED term'] != 'N/A'):
+                entity_.norm_ids.append(entity.infons['SNOMED code'])
+                entity_.norm_names.append(entity.infons['SNOMED term'])
+                ct_snomed += 1
+            elif ('MedDRA code' in entity.infons and entity.infons['MedDRA code'] != 'N/A')\
+                    and ('MedDRA term' in entity.infons and entity.infons['MedDRA term'] != 'N/A'):
+                entity_.norm_ids.append(entity.infons['MedDRA code'])
+                entity_.norm_names.append(entity.infons['MedDRA term'])
+                ct_meddra += 1
+            else:
+                logging.debug("{}: no norm id in entity {}".format(fileName, entity.id))
+                ct_unnormed += 1
+
             entities.append(entity_)
 
         document.entities = entities
 
     corpus_file = get_text_file(join(corpus_dir, fileName.split('.bioc')[0]))
+    document.text = corpus_file
 
     if opt.nlp_tool == "spacy":
         if isTraining:
@@ -363,7 +384,7 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, t
 
     document.sentences = sentences
 
-    return document
+    return document, ct_snomed, ct_meddra, ct_unnormed
 
 def get_fda_file(file_path):
     handler = fda_xml_handler.FdaXmlHandler()
@@ -456,11 +477,14 @@ def loadData(basedir, isTraining, types, type_filter):
     count_document = 0
     count_sentence = 0
     count_entity = 0
+    count_entity_snomed = 0
+    count_entity_meddra = 0
+    count_entity_without_normed = 0
 
     annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
     for fileName in annotation_files:
         try:
-            document = processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, types, type_filter)
+            document, p1, p2, p3 = processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, types, type_filter)
         except Exception as e:
             logging.error("process file {} error: {}".format(fileName, e))
             continue
@@ -471,10 +495,14 @@ def loadData(basedir, isTraining, types, type_filter):
         count_document += 1
         count_sentence += len(document.sentences)
         count_entity += len(document.entities)
+        count_entity_snomed += p1
+        count_entity_meddra += p2
+        count_entity_without_normed += p3
 
     logging.info("document number: {}".format(count_document))
     logging.info("sentence number: {}".format(count_sentence))
-    logging.info("entity number {}".format(count_entity))
+    logging.info("entity number {}, snomed {}, meddra {}, unnormed {}".format(count_entity, count_entity_snomed,
+                                                                              count_entity_meddra, count_entity_without_normed))
 
     return documents
 

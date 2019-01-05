@@ -134,9 +134,9 @@ class Ensemble(nn.Module):
         # self.w2.data = (self.w2.data- min) / (max - min)
         # self.w3.data = (self.w3.data- min) / (max - min)
 
-    def process_one_doc(self, doc, entities, dict):
+    def process_one_doc(self, doc, entities, dictionary, dictionary_reverse, isMeddra_dict):
 
-        Xs, Ys = generate_instances(doc, self.word_alphabet, self.dict_alphabet, dict)
+        Xs, Ys = generate_instances(doc, self.word_alphabet, self.dict_alphabet, dictionary, dictionary_reverse, isMeddra_dict)
 
         data_loader = DataLoader(MyDataset(Xs, Ys), opt.batch_size, shuffle=False, collate_fn=my_collate)
         data_iter = iter(data_loader)
@@ -157,13 +157,18 @@ class Ensemble(nn.Module):
             for batch_idx in range(actual_batch_size):
                 entity = entities[entity_start+batch_idx]
                 norm_id = norm_utils.get_dict_name(self.dict_alphabet, indices[batch_idx].item())
-                name = dict[norm_id]
-                entity.norm_ids.append(norm_id)
-                entity.norm_names.append(name)
+                if isMeddra_dict:
+                    name = dictionary[norm_id]
+                    entity.norm_ids.append(norm_id)
+                    entity.norm_names.append(name)
+                else:
+                    concept = dictionary[norm_id]
+                    entity.norm_ids.append(norm_id)
+                    entity.norm_names.append(concept.names)
 
             entity_start += actual_batch_size
 
-def generate_instances(document, word_alphabet, dict_alphabet, meddra_dict):
+def generate_instances(document, word_alphabet, dict_alphabet, dictionary, dictionary_reverse, isMeddra_dict):
     Xs = []
     Ys = []
 
@@ -178,17 +183,33 @@ def generate_instances(document, word_alphabet, dict_alphabet, meddra_dict):
         pred.name = gold.name
         pred_entities.append(pred)
 
-    multi_sieve.runMultiPassSieve(document, pred_entities, meddra_dict)
+    multi_sieve.runMultiPassSieve(document, pred_entities, dictionary, isMeddra_dict)
 
     for idx, entity in enumerate(document.entities):
-        if len(entity.norm_ids) > 0:
-            Y = norm_utils.get_dict_index(dict_alphabet, entity.norm_ids[0])
-            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
-                Ys.append(Y)
+
+        if isMeddra_dict:
+            if len(entity.norm_ids) > 0:
+                Y = norm_utils.get_dict_index(dict_alphabet, entity.norm_ids[0])
+                if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                    Ys.append(Y)
+                else:
+                    continue
             else:
-                continue
+                Ys.append(0)
         else:
-            Ys.append(0)
+            if len(entity.norm_ids) > 0:
+                if entity.norm_ids[0] in dictionary_reverse:
+                    cui_list = dictionary_reverse[entity.norm_ids[0]]
+                    Y = norm_utils.get_dict_index(dict_alphabet, cui_list[0])  # use the first id to generate instance
+                    if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                        Ys.append(Y)
+                    else:
+                        raise RuntimeError("entity {}, {}, cui not in dict_alphabet".format(entity.id, entity.name))
+                else:
+                    logging.info("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
+                    continue
+            else:
+                Ys.append(0)
 
         X = dict()
 
@@ -256,7 +277,7 @@ def pad_sequence(x, max_len):
 
     return padded_x
 
-def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretrain_model):
+def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, pretrain_model, isMeddra_dict):
     logging.info("train the ensemble normalization model ...")
 
     external_train_data = []
@@ -272,7 +293,7 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
 
     logging.info("build alphabet ...")
     word_alphabet = Alphabet('word')
-    norm_utils.build_alphabet_from_dict(word_alphabet, meddra_dict)
+    norm_utils.build_alphabet_from_dict(word_alphabet, dictionary, isMeddra_dict)
     norm_utils.build_alphabet(word_alphabet, train_data)
     if opt.dev_file:
         norm_utils.build_alphabet(word_alphabet, dev_data)
@@ -296,23 +317,24 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
         embedding_dim = d.word_emb_dim
 
     dict_alphabet = Alphabet('dict')
-    norm_utils.init_dict_alphabet(dict_alphabet, meddra_dict)
+    norm_utils.init_dict_alphabet(dict_alphabet, dictionary)
     norm_utils.fix_alphabet(dict_alphabet)
 
     # rule
     logging.info("init rule-based normer")
-    multi_sieve.init(opt, train_data, d, meddra_dict)
+    multi_sieve.init(opt, train_data, d, dictionary, dictionary_reverse, isMeddra_dict)
 
     if opt.ensemble == 'learn':
         logging.info("init ensemble normer")
-        poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, meddra_dict)
+        poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict)
         ensemble_model = Ensemble(word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses)
         if pretrain_model is not None:
             ensemble_model.neural_linear.weight.data.copy_(pretrain_model.linear.weight.data)
         ensemble_train_X = []
         ensemble_train_Y = []
         for doc in train_data:
-            temp_X, temp_Y = generate_instances(doc, word_alphabet, dict_alphabet, meddra_dict)
+            temp_X, temp_Y = generate_instances(doc, word_alphabet, dict_alphabet, dictionary, dictionary_reverse, isMeddra_dict)
+
             ensemble_train_X.extend(temp_X)
             ensemble_train_Y.extend(temp_Y)
         ensemble_train_loader = DataLoader(MyDataset(ensemble_train_X, ensemble_train_Y), opt.batch_size, shuffle=True, collate_fn=my_collate)
@@ -323,14 +345,18 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
 
         # vsm
         logging.info("init vsm-based normer")
-        poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, meddra_dict)
+        poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict)
         # alphabet can share between vsm and neural since they don't change
         # but word_embedding cannot
         vsm_model = vsm.VsmNormer(word_alphabet, copy.deepcopy(word_embedding), embedding_dim, dict_alphabet, poses)
         vsm_train_X = []
         vsm_train_Y = []
         for doc in train_data:
-            temp_X, temp_Y = vsm.generate_instances(doc.entities, word_alphabet, dict_alphabet)
+            if isMeddra_dict:
+                temp_X, temp_Y = vsm.generate_instances(doc.entities, word_alphabet, dict_alphabet)
+            else:
+                temp_X, temp_Y = vsm.generate_instances_ehr(doc.entities, word_alphabet, dict_alphabet, dictionary_reverse)
+
             vsm_train_X.extend(temp_X)
             vsm_train_Y.extend(temp_Y)
         vsm_train_loader = DataLoader(vsm.MyDataset(vsm_train_X, vsm_train_Y), opt.batch_size, shuffle=True, collate_fn=vsm.my_collate)
@@ -347,7 +373,11 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
         neural_train_X = []
         neural_train_Y = []
         for doc in train_data:
-            temp_X, temp_Y = norm_neural.generate_instances(doc.entities, word_alphabet, dict_alphabet)
+            if isMeddra_dict:
+                temp_X, temp_Y = norm_neural.generate_instances(doc.entities, word_alphabet, dict_alphabet)
+            else:
+                temp_X, temp_Y = norm_neural.generate_instances_ehr(doc.entities, word_alphabet, dict_alphabet, dictionary_reverse)
+
             neural_train_X.extend(temp_X)
             neural_train_Y.extend(temp_Y)
         neural_train_loader = DataLoader(norm_neural.MyDataset(neural_train_X, neural_train_Y), opt.batch_size, shuffle=True, collate_fn=norm_neural.my_collate)
@@ -433,9 +463,9 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
         if opt.dev_file:
             if opt.ensemble == 'learn':
                 # logging.info("weight w1: %.4f, w2: %.4f, w3: %.4f" % (ensemble_model.w1.data.item(), ensemble_model.w2.data.item(), ensemble_model.w3.data.item()))
-                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None, ensemble_model, d)
+                p, r, f = norm_utils.evaluate(dev_data, dictionary, dictionary_reverse, None, None, ensemble_model, d, isMeddra_dict)
             else:
-                p, r, f = norm_utils.evaluate(dev_data, meddra_dict, vsm_model, neural_model, None, d)
+                p, r, f = norm_utils.evaluate(dev_data, dictionary, dictionary_reverse, vsm_model, neural_model, None, d, isMeddra_dict)
             logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
         else:
             f = best_dev_f
@@ -489,7 +519,7 @@ def train(train_data, dev_data, test_data, d, meddra_dict, opt, fold_idx, pretra
     return best_dev_p, best_dev_r, best_dev_f
 
 
-def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, dict_alphabet, d):
+def merge_result(entities1, entities2, entities3, merge_entities, dictionary, isMeddra_dict, dict_alphabet, d):
     if opt.ensemble == 'vote':
 
         for idx, merge_entity in enumerate(merge_entities):
@@ -556,9 +586,15 @@ def merge_result(entities1, entities2, entities3, merge_entities, meddra_dict, d
 
             index = total.argmax()
             norm_id = norm_utils.get_dict_name(dict_alphabet, index)
-            norm_name = meddra_dict[norm_id]
-            merge_entity.norm_ids.append(norm_id)
-            merge_entity.norm_names.append(norm_name)
+            if isMeddra_dict:
+                name = dictionary[norm_id]
+                merge_entity.norm_ids.append(norm_id)
+                merge_entity.norm_names.append(name)
+            else:
+                concept = dictionary[norm_id]
+                merge_entity.norm_ids.append(norm_id)
+                merge_entity.norm_names.append(concept.names)
+
     else:
         raise RuntimeError("run configuration")
 

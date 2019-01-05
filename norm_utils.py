@@ -28,11 +28,18 @@ def open_alphabet(alphabet):
 def fix_alphabet(alphabet):
     alphabet.close()
 
-def build_alphabet_from_dict(alphabet, meddra_dict):
-    for concept_id, concept_name in meddra_dict.items():
-        tokens = my_tokenize(concept_name)
-        for word in tokens:
-            alphabet.add(word_preprocess(word))
+def build_alphabet_from_dict(alphabet, dictionary, isMeddra_dict):
+    if isMeddra_dict:
+        for concept_id, concept_name in dictionary.items():
+            tokens = my_tokenize(concept_name)
+            for word in tokens:
+                alphabet.add(word_preprocess(word))
+    else:
+        for concept_id, concept in dictionary.items():
+            for concept_name in concept.names:
+                tokens = my_tokenize(concept_name)
+                for word in tokens:
+                    alphabet.add(word_preprocess(word))
 
 def get_dict_index(dict_alphabet, concept_id):
     index = dict_alphabet.get_index(concept_id)-2 # since alphabet begin at 2
@@ -42,16 +49,16 @@ def get_dict_name(dict_alphabet, concept_index):
     name = dict_alphabet.get_instance(concept_index+2)
     return name
 
-def init_dict_alphabet(dict_alphabet, meddra_dict):
-
-    for concept_id, concept_name in meddra_dict.items():
+def init_dict_alphabet(dict_alphabet, dictionary):
+    # concept_name may be string or umls_concept
+    for concept_id, concept_name in dictionary.items():
         dict_alphabet.add(concept_id)
 
 def get_dict_size(dict_alphabet):
     return dict_alphabet.size()-2
 
 
-def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model, d):
+def evaluate(documents, dictionary, dictionary_reverse, vsm_model, neural_model, ensemble_model, d, isMeddra_dict):
     if vsm_model is not None :
         vsm_model.eval()
 
@@ -89,20 +96,20 @@ def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model, d)
 
         if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
             if opt.ensemble == 'learn':
-                ensemble_model.process_one_doc(document, pred_entities, meddra_dict)
+                ensemble_model.process_one_doc(document, pred_entities, dictionary, dictionary_reverse, isMeddra_dict)
             else:
                 pred_entities2 = copy.deepcopy(pred_entities)
                 pred_entities3 = copy.deepcopy(pred_entities)
                 merge_entities = copy.deepcopy(pred_entities)
-                multi_sieve.runMultiPassSieve(document, pred_entities, meddra_dict)
-                vsm_model.process_one_doc(document, pred_entities2, meddra_dict)
-                neural_model.process_one_doc(document, pred_entities3, meddra_dict)
+                multi_sieve.runMultiPassSieve(document, pred_entities, dictionary, isMeddra_dict)
+                vsm_model.process_one_doc(document, pred_entities2, dictionary, dictionary_reverse, isMeddra_dict)
+                neural_model.process_one_doc(document, pred_entities3, dictionary, dictionary_reverse, isMeddra_dict)
         elif opt.norm_rule:
-            multi_sieve.runMultiPassSieve(document, pred_entities, meddra_dict)
+            multi_sieve.runMultiPassSieve(document, pred_entities, dictionary, isMeddra_dict)
         elif opt.norm_vsm:
-            vsm_model.process_one_doc(document, pred_entities, meddra_dict)
+            vsm_model.process_one_doc(document, pred_entities, dictionary, dictionary_reverse, isMeddra_dict)
         elif opt.norm_neural:
-            neural_model.process_one_doc(document, pred_entities, meddra_dict)
+            neural_model.process_one_doc(document, pred_entities, dictionary, dictionary_reverse, isMeddra_dict)
         else:
             raise RuntimeError("wrong configuration")
 
@@ -155,31 +162,39 @@ def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model, d)
                 #     ct_correct += 1
 
             if opt.ensemble == 'learn':
-                ct_gold += len(document.entities)
-                ct_predicted += len(pred_entities)
-                for idx, pred in enumerate(pred_entities):
-                    gold = document.entities[idx]
-                    if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
-                        ct_correct += 1
-            else:
-                ensemble.merge_result(pred_entities, pred_entities2, pred_entities3, merge_entities, meddra_dict, vsm_model.dict_alphabet, d)
 
-                ct_gold += len(document.entities)
-                ct_predicted += len(merge_entities)
-                for idx, pred in enumerate(merge_entities):
-                    gold = document.entities[idx]
-                    if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
-                        ct_correct += 1
+                if isMeddra_dict:
+                    p1, p2, p3 = evaluate_for_fda(document.entities, pred_entities)
+                else:
+                    p1, p2, p3 = evaluate_for_ehr(document.entities, pred_entities, dictionary)
+
+                ct_gold += p1
+                ct_predicted += p2
+                ct_correct += p3
+
+            else:
+                ensemble.merge_result(pred_entities, pred_entities2, pred_entities3, merge_entities, dictionary, isMeddra_dict, vsm_model.dict_alphabet, d)
+
+                if isMeddra_dict:
+                    p1, p2, p3 = evaluate_for_fda(document.entities, merge_entities)
+                else:
+                    p1, p2, p3 = evaluate_for_ehr(document.entities, merge_entities, dictionary)
+
+                ct_gold += p1
+                ct_predicted += p2
+                ct_correct += p3
 
 
         else:
 
-            ct_gold += len(document.entities)
-            ct_predicted += len(pred_entities)
-            for idx, pred in enumerate(pred_entities):
-                gold = document.entities[idx]
-                if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
-                    ct_correct += 1
+            if isMeddra_dict:
+                p1, p2, p3 = evaluate_for_fda(document.entities, pred_entities)
+            else:
+                p1, p2, p3 = evaluate_for_ehr(document.entities, pred_entities, dictionary)
+
+            ct_gold += p1
+            ct_predicted += p2
+            ct_correct += p3
 
     # if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
     #     logging.info("ensemble correct. all:{} rule:{} vsm:{} neural:{} rule_vsm:{} rule_neural:{} vsm_neural:{}"
@@ -202,5 +217,44 @@ def evaluate(documents, meddra_dict, vsm_model, neural_model, ensemble_model, d)
 
     return precision, recall, f_measure
 
+
+def evaluate_for_fda(gold_entities, pred_entities):
+
+    ct_gold = len(gold_entities)
+    ct_predicted = len(pred_entities)
+    ct_correct = 0
+    for idx, pred in enumerate(pred_entities):
+        gold = gold_entities[idx]
+        if len(pred.norm_ids) != 0 and pred.norm_ids[0] in gold.norm_ids:
+            ct_correct += 1
+
+    return ct_gold, ct_predicted, ct_correct
+
+def evaluate_for_ehr(gold_entities, pred_entities, dictionary):
+
+    ct_norm_gold = len(gold_entities)
+    ct_norm_predict = len(pred_entities)
+    ct_norm_correct = 0
+
+    for predict_entity in pred_entities:
+
+        for gold_entity in gold_entities:
+
+            if predict_entity.equals_span(gold_entity):
+
+                if len(gold_entity.norm_ids) == 0:
+                    # if gold_entity not annotated, we count it as TP
+                    ct_norm_correct += 1
+                else:
+
+                    if len(predict_entity.norm_ids) != 0 and predict_entity.norm_ids[0] in dictionary:
+                        concept = dictionary[predict_entity.norm_ids[0]]
+
+                        if gold_entity.norm_ids[0] in concept.codes:
+                            ct_norm_correct += 1
+
+                break
+
+    return ct_norm_gold, ct_norm_predict, ct_norm_correct
 
 

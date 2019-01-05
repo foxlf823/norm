@@ -19,7 +19,7 @@ class Util:
         if valueList == None:
             valueList = list()
             keyValueListMap[key] = valueList
-        valueList = Util.setList(valueList, value);
+        valueList = Util.setList(valueList, value)
         return keyValueListMap
 
     @classmethod
@@ -560,19 +560,31 @@ class Terminology:
 
 
 
-    def loadTerminology(self, path):
+    def loadTerminology(self, dictionary, isMeddra_dict):
 
-        with codecs.open(path, 'r', 'UTF-8') as fp:
-            for line in fp:
-                line = line.strip()
-                if line == u'':
-                    continue
-                token = re.split(r"\|\|", line)
-                cui = token[0]
+        # with codecs.open(path, 'r', 'UTF-8') as fp:
+        #     for line in fp:
+        #         line = line.strip()
+        #         if line == u'':
+        #             continue
+        #         token = re.split(r"\|\|", line)
+        #         cui = token[0]
+        #
+        #         conceptNames = token[1].lower()
+        #
+        #         self.loadMaps(conceptNames, cui)
 
-                conceptNames = token[1].lower()
+        if isMeddra_dict:
+            for cui, conceptNames in dictionary.items():
+                self.loadMaps(conceptNames.lower(), cui)
 
-                self.loadMaps(conceptNames, cui)
+        else:
+            for cui, concept in dictionary.items():
+
+                for concept_name in concept.names:
+
+                    self.loadMaps(concept_name.lower(), cui)
+
 
     def clearTerminology(self):
         self.cuiAlternateCuiMap.clear()
@@ -584,7 +596,7 @@ class Terminology:
         self.compoundNameToCuiListMap.clear()
         self.simpleNameToCuiListMap.clear()
 
-    def loadTrainingDataTerminology(self, documents):
+    def loadTrainingDataTerminology(self, documents, dictionary_reverse, isMeddra_dict):
 
         for document in documents:
 
@@ -593,17 +605,27 @@ class Terminology:
                 conceptName = mention.name.lower().strip()
                 for idx, norm_id in enumerate(mention.norm_ids):
 
-                    # conceptName = mention.norm_names[idx].lower().strip()
+                    if isMeddra_dict:
+                        self.loadMaps(conceptName, norm_id)
+                        cui = norm_id
 
-                    self.loadMaps(conceptName, norm_id)
+                        simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
+                        for simpleConceptName in simpleConceptNames:
+                            self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName,
+                                                                      cui)
+                    else:
+                        if norm_id in dictionary_reverse:
+                            cui = dictionary_reverse[norm_id]
+                            self.loadMaps(conceptName, cui[0])
 
-                    cui = norm_id
+                            simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(
+                                re.split(r"\s+", conceptName))
+                            for simpleConceptName in simpleConceptNames:
+                                self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap,
+                                                                          simpleConceptName,
+                                                                          cui)
 
-                    simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
-                    for simpleConceptName in simpleConceptNames:
-                        self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
-
-    def loadTrainingDataTerminology_frompath(self, path):
+    def loadTrainingDataTerminology_frompath(self, path, dictionary_reverse, isMeddra_dict):
 
         for input_file_name in os.listdir(path):
             if input_file_name.find(".xml") == -1:
@@ -616,15 +638,27 @@ class Terminology:
                 conceptName = mention.name.lower().strip()
                 for idx, norm_id in enumerate(mention.norm_ids):
 
-                    # conceptName = mention.norm_names[idx].lower().strip()
+                    if isMeddra_dict:
 
-                    self.loadMaps(conceptName, norm_id)
+                        self.loadMaps(conceptName, norm_id)
 
-                    cui = norm_id
+                        cui = norm_id
 
-                    simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
-                    for simpleConceptName in simpleConceptNames:
-                        self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
+                        simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
+                        for simpleConceptName in simpleConceptNames:
+                            self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
+
+                    else:
+                        if norm_id in dictionary_reverse:
+                            cui = dictionary_reverse[norm_id]
+                            self.loadMaps(conceptName, cui[0])
+
+                            simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(
+                                re.split(r"\s+", conceptName))
+                            for simpleConceptName in simpleConceptNames:
+                                self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap,
+                                                                          simpleConceptName,
+                                                                          cui)
 
     def loadTAC2017Terminology(self, path):
         for input_file_name in os.listdir(path):
@@ -946,24 +980,24 @@ class Sieve:
     use_tac2017Terminology = False
 
     @classmethod
-    def setStandardTerminology(self, dict_path):
-        Sieve.standardTerminology.loadTerminology(dict_path)
+    def setStandardTerminology(self, dictionary, isMeddra_dict):
+        Sieve.standardTerminology.loadTerminology(dictionary, isMeddra_dict)
 
     @classmethod
     def clearStandardTerminology(self):
         Sieve.standardTerminology.clearTerminology()
 
     @classmethod
-    def setTrainingDataTerminology(self, train_path):
-        Sieve.trainingDataTerminology.loadTrainingDataTerminology(train_path)
+    def setTrainingDataTerminology(self, train_path, dictionary_reverse, isMeddra_dict):
+        Sieve.trainingDataTerminology.loadTrainingDataTerminology(train_path, dictionary_reverse, isMeddra_dict)
 
     @classmethod
     def clearTrainingDataTerminology(self):
         Sieve.trainingDataTerminology.clearTerminology()
 
     @classmethod
-    def setTrainingDataTerminology_frompath(self, train_path):
-        Sieve.trainingDataTerminology.loadTrainingDataTerminology_frompath(train_path)
+    def setTrainingDataTerminology_frompath(self, train_path, dictionary_reverse, isMeddra_dict):
+        Sieve.trainingDataTerminology.loadTrainingDataTerminology_frompath(train_path, dictionary_reverse, isMeddra_dict)
 
     @classmethod
     def setTAC2017Terminology(self, train_path):
@@ -1702,7 +1736,7 @@ from alphabet import Alphabet
 
 multi_sieve_dict_alphabet = Alphabet('dict')
 
-def init(opt, train_data, d, meddra_dict):
+def init(opt, train_data, d, dictionary, dictionary_reverse, isMeddra_dict):
     logging.info("initialize the rule-based normalization model ...")
 
     Ling.setStopwordsList(os.path.join(d.config['norm_rule_resource'], 'stopwords.txt'))
@@ -1717,13 +1751,13 @@ def init(opt, train_data, d, meddra_dict):
 
     Evaluation.initialize(d)
 
-    Sieve.setStandardTerminology(d.config['norm_dict'])
+    Sieve.setStandardTerminology(dictionary, isMeddra_dict)
 
     if d.config.get('norm_rule_use_trainset') != '0':
         if train_data is None:
-            Sieve.setTrainingDataTerminology_frompath(opt.train_file)
+            Sieve.setTrainingDataTerminology_frompath(opt.train_file, dictionary_reverse, isMeddra_dict)
         else:
-            Sieve.setTrainingDataTerminology(train_data)
+            Sieve.setTrainingDataTerminology(train_data, dictionary_reverse, isMeddra_dict)
 
     # external corpus
     if d.config.get('norm_ext_corpus') is not None:
@@ -1735,11 +1769,11 @@ def init(opt, train_data, d, meddra_dict):
 
 
     if multi_sieve_dict_alphabet.keep_growing:
-        norm_utils.init_dict_alphabet(multi_sieve_dict_alphabet, meddra_dict)
+        norm_utils.init_dict_alphabet(multi_sieve_dict_alphabet, dictionary)
         norm_utils.fix_alphabet(multi_sieve_dict_alphabet)
 
 
-def runMultiPassSieve(document, entities, meddra_dict):
+def runMultiPassSieve(document, entities, dictionary, isMeddra_dict):
 
     concepts = list()
 
@@ -1762,11 +1796,17 @@ def runMultiPassSieve(document, entities, meddra_dict):
         id = concepts[idx].getCui()
         if id != u"CUI-less":
             for _id in id.split("|"):
-                name = meddra_dict[_id]
-                entity.norm_ids.append(_id)
-                entity.norm_names.append(name)
+                if isMeddra_dict:
+                    name = dictionary[_id]
+                    entity.norm_ids.append(_id)
+                    entity.norm_names.append(name)
+                else:
+                    concept = dictionary[_id]
+                    entity.norm_ids.append(_id)
+                    entity.norm_names.append(concept.names)
+
                 if opt.ensemble == 'sum':
-                    confidences = np.zeros([len(meddra_dict)])
+                    confidences = np.zeros([len(dictionary)])
                     confidences[norm_utils.get_dict_index(multi_sieve_dict_alphabet, _id)] = 1
                     entity.norm_confidences.append(confidences)
                 if entity.rule_id is None:
@@ -1791,16 +1831,16 @@ def finalize(shutdownjvm):
     if shutdownjvm:
         shutdownJVM()
 
-def train(train_data, dev_data, d, meddra_dict, opt, fold_idx):
+def train(train_data, dev_data, d, dictionary, dictionary_reverse, opt, fold_idx, isMeddra_dict):
 
-    init(opt, train_data, d)
+    init(opt, train_data, d, dictionary, dictionary_reverse, isMeddra_dict)
 
     best_dev_f = -10
     best_dev_p = -10
     best_dev_r = -10
 
     if opt.dev_file:
-        p, r, f = norm_utils.evaluate(dev_data, meddra_dict, None, None, None, d)
+        p, r, f = norm_utils.evaluate(dev_data, dictionary, dictionary_reverse, None, None, None, d, isMeddra_dict)
         logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (p, r, f))
     else:
         f = best_dev_f

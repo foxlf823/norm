@@ -20,8 +20,10 @@ def apply_metamap_to(input_dir, output_dir):
         else:
             output_file_name = input_file_name[0:input_file_name.rfind('.')]+".field.txt"
         output_file_path = join(output_dir, output_file_name)
-        os.system('/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -R SNOMEDCT_US -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(
+        os.system(
+            '/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -R SNOMEDCT_US,MDR -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(
                 input_file_path, output_file_path))
+        # os.system('/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -R SNOMEDCT_US -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(input_file_path, output_file_path))
         # os.system('/Users/feili/tools/metamap/public_mm/bin/metamap -y -I -N --blanklines 0 -J acab,anab,comd,cgab,dsyn,emod,fndg,inpo,mobd,neop,patf,sosy {} {}'.format(input_file_path, output_file_path))
 
 def load_metamap_result_from_file(file_path):
@@ -64,12 +66,11 @@ def load_metamap_result_from_file(file_path):
 
                     tmps = span.split(u"/")
                     entity = Entity()
-                    entity.start = int(tmps[0])
-                    entity.end = int(tmps[0]) + int(tmps[1])
-                    entity.norm_id = str(UMLS_ID)
+                    entity.spans.append([int(tmps[0]), int(tmps[0]) + int(tmps[1])])
+                    entity.norm_ids.append(str(UMLS_ID))
                     # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
                     tmps = triggers[idx].split(u"-")
-                    entity.text = tmps[3]
+                    entity.name = tmps[3]
 
                     entities.append(entity)
                 else:
@@ -83,12 +84,11 @@ def load_metamap_result_from_file(file_path):
 
                         tmps = bracket_span[1:-1].split(u"/")
                         entity = Entity()
-                        entity.start = int(tmps[0])
-                        entity.end = int(tmps[0]) + int(tmps[1])
-                        entity.norm_id = str(UMLS_ID)
+                        entity.spans.append([int(tmps[0]), int(tmps[0]) + int(tmps[1])])
+                        entity.norm_ids.append(str(UMLS_ID))
                         # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
                         tmps = triggers[idx].split(u"-")
-                        entity.text = tmps[3]
+                        entity.name = tmps[3]
 
                         entities.append(entity)
 
@@ -103,8 +103,8 @@ if __name__=="__main__":
 #     apply_metamap_to("/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/txt", "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap")
 
 # load_metamap_result_from_file("/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap/29_2011-11-15+OC.field.txt")
-    load_metamap_result_from_file(
-    "/Users/feili/Desktop/umass/bioC_data/other/cardio_data/metamap/1001_266.field.txt")
+#     load_metamap_result_from_file(
+#     "/Users/feili/Desktop/umass/bioC_data/other/cardio_data/metamap/1001_266.field.txt")
 
 
     pass

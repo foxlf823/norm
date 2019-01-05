@@ -16,6 +16,20 @@ import numpy as np
 import random
 
 
+def setList(listt, value):
+    if (value not in listt) and (value != u""):
+        listt.append(value)
+    return listt
+
+def setMap(keyValueListMap, key, value):
+    valueList = keyValueListMap.get(key)
+    if valueList == None:
+        valueList = list()
+        keyValueListMap[key] = valueList
+    valueList = setList(valueList, value)
+    return keyValueListMap
+
+
 
 def batchify_with_label(data, input_batch_list, input_batch_list_text, gpu):
 
