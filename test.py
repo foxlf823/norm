@@ -17,62 +17,40 @@ import umls
 import multi_sieve
 import copy
 import ensemble
+from metric import get_ner_BMES
 
-def checkWrongState(labelSequence):
-    positionNew = -1
-    positionOther = -1
-    currentLabel = labelSequence[-1]
-    assert currentLabel[0] == 'M' or currentLabel[0] == 'E'
 
-    for j in range(len(labelSequence)-1)[::-1]:
-        if positionNew == -1 and currentLabel[2:] == labelSequence[j][2:] and labelSequence[j][0] == 'B' :
-            positionNew = j
-        elif positionOther == -1 and (currentLabel[2:] != labelSequence[j][2:] or labelSequence[j][0] != 'M'):
-            positionOther = j
-
-        if positionOther != -1 and positionNew != -1:
-            break
-
-    if positionNew == -1:
-        return False
-    elif positionOther < positionNew:
-        return True
-    else:
-        return False
 
 def translateResultsintoEntities(sentences, predict_results):
 
-    entity_id = 1
-    results = []
-
+    pred_entities = []
     sent_num = len(predict_results)
+
     for idx in range(sent_num):
-        sent_length = len(predict_results[idx])
-        sent_token = sentences[idx]
 
-        labelSequence = []
+        predict_list = predict_results[idx]
+        sentence = sentences[idx]
 
-        for idy in range(sent_length):
-            token = sent_token[idy]
-            label = predict_results[idx][idy]
-            labelSequence.append(label)
+        entities = get_ner_BMES(predict_list, False)
 
-            if label[0] == 'S' or label[0] == 'B':
-                entity = Entity()
-                entity.create(str(entity_id), label[2:], token['start'], token['end'], token['text'], idx, idy, idy)
-                results.append(entity)
-                entity_id += 1
+        # find span based on tkSpan, fill name
+        for entity in entities:
+            name = ''
+            for tkSpan in entity.tkSpans:
+                span = [sentence[tkSpan[0]]['start'], sentence[tkSpan[1]]['end']]
+                entity.spans.append(span)
+                for i in range(tkSpan[0], tkSpan[1]+1):
+                    name += sentence[i]['text'] + ' '
+            entity.name = name.strip()
 
-            elif label[0] == 'M' or label[0] == 'E':
-                if checkWrongState(labelSequence):
-                    entity = results[-1]
-                    entity.append(token['start'], token['end'], token['text'], idy)
+        pred_entities.extend(entities)
 
 
-    return results
+    return pred_entities
 
 
 def dump_results(doc_name, entities, opt):
+    entity_id = 1
     collection = bioc.BioCCollection()
     document = bioc.BioCDocument()
     collection.add_document(document)
@@ -84,11 +62,12 @@ def dump_results(doc_name, entities, opt):
     for entity in entities:
         anno_entity = bioc.BioCAnnotation()
         passage.add_annotation(anno_entity)
-        anno_entity.id = entity.id
+        anno_entity.id = str(entity_id)
+        entity_id += 1
         anno_entity.infons['type'] = entity.type
-        anno_entity_location = bioc.BioCLocation(entity.start, entity.getlength())
+        anno_entity_location = bioc.BioCLocation(entity.spans[0][0], entity.spans[0][1]-entity.spans[0][0])
         anno_entity.add_location(anno_entity_location)
-        anno_entity.text = entity.text
+        anno_entity.text = entity.name
         if len(entity.norm_ids) > 0:
             anno_entity.infons['UMLS code'] = entity.norm_ids[0]
             anno_entity.infons['UMLS term'] = entity.norm_names[0]

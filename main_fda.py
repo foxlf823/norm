@@ -240,16 +240,16 @@ elif opt.whattodo == 2:
 
         if opt.norm_neural:
             if d.config['norm_neural_pretrain'] == '1':
-                neural_model = norm_neural.dict_pretrain(meddra_dict, d, True)
+                neural_model = norm_neural.dict_pretrain(meddra_dict, None, d, True)
             else:
                 neural_model = None
 
         if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
-            ensemble.train(train_data, dev_data, test_data, d, meddra_dict, opt, None, neural_model)
+            ensemble.train(train_data, dev_data, test_data, d, meddra_dict, None, opt, None, neural_model, True)
         elif opt.norm_vsm:
-            vsm.train(train_data, dev_data, test_data, d, meddra_dict, opt, None)
+            vsm.train(train_data, dev_data, test_data, d, meddra_dict, None, opt, None, True)
         elif opt.norm_neural:
-            norm_neural.train(train_data, dev_data, test_data, d, meddra_dict, opt, None, neural_model, True)
+            norm_neural.train(train_data, dev_data, test_data, d, meddra_dict, None, opt, None, neural_model, True)
         else:
             raise RuntimeError("wrong configuration")
 

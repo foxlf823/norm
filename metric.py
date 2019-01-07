@@ -24,8 +24,8 @@ def get_ner_fmeasure(golden_lists, predict_lists, label_type="BMES"):
                 right_tag += 1
         all_tag += len(golden_list)
         if label_type == "BMES":
-            gold_matrix = get_ner_BMES(golden_list)
-            pred_matrix = get_ner_BMES(predict_list)
+            gold_matrix = get_ner_BMES(golden_list, True)
+            pred_matrix = get_ner_BMES(predict_list, True)
         elif label_type == 'BIOHD_1234':
             gold_matrix = get_ner_BIOHD_1234(golden_list, True)
             pred_matrix = get_ner_BIOHD_1234(predict_list, True)
@@ -66,51 +66,108 @@ def reverse_style(input_string):
     return output_string
 
 
-def get_ner_BMES(label_list):
-    # list_len = len(word_list)
-    # assert(list_len == len(label_list)), "word list size unmatch with label list"
-    list_len = len(label_list)
-    begin_label = 'B-'
-    end_label = 'E-'
-    single_label = 'S-'
-    whole_tag = ''
-    index_tag = ''
-    tag_list = []
-    stand_matrix = []
-    for i in range(0, list_len):
-        # wordlabel = word_list[i]
-        current_label = label_list[i].upper()
-        if begin_label in current_label:
-            if index_tag != '':
-                tag_list.append(whole_tag + ',' + str(i-1))
-            whole_tag = current_label.replace(begin_label,"",1) +'[' +str(i)
-            index_tag = current_label.replace(begin_label,"",1)
-            
-        elif single_label in current_label:
-            if index_tag != '':
-                tag_list.append(whole_tag + ',' + str(i-1))
-            whole_tag = current_label.replace(single_label,"",1) +'[' +str(i)
-            tag_list.append(whole_tag)
-            whole_tag = ""
-            index_tag = ""
-        elif end_label in current_label:
-            if index_tag != '':
-                tag_list.append(whole_tag +',' + str(i))
-            whole_tag = ''
-            index_tag = ''
-        else:
-            continue
-    if (whole_tag != '')&(index_tag != ''):
-        tag_list.append(whole_tag)
-    tag_list_len = len(tag_list)
+# def get_ner_BMES(label_list):
+#
+#     list_len = len(label_list)
+#     begin_label = 'B-'
+#     end_label = 'E-'
+#     single_label = 'S-'
+#     whole_tag = ''
+#     index_tag = ''
+#     tag_list = []
+#     stand_matrix = []
+#     for i in range(0, list_len):
+#         # wordlabel = word_list[i]
+#         current_label = label_list[i].upper()
+#         if begin_label in current_label:
+#             if index_tag != '':
+#                 tag_list.append(whole_tag + ',' + str(i-1))
+#             whole_tag = current_label.replace(begin_label,"",1) +'[' +str(i)
+#             index_tag = current_label.replace(begin_label,"",1)
+#
+#         elif single_label in current_label:
+#             if index_tag != '':
+#                 tag_list.append(whole_tag + ',' + str(i-1))
+#             whole_tag = current_label.replace(single_label,"",1) +'[' +str(i)
+#             tag_list.append(whole_tag)
+#             whole_tag = ""
+#             index_tag = ""
+#         elif end_label in current_label:
+#             if index_tag != '':
+#                 tag_list.append(whole_tag +',' + str(i))
+#             whole_tag = ''
+#             index_tag = ''
+#         else:
+#             continue
+#     if (whole_tag != '')&(index_tag != ''):
+#         tag_list.append(whole_tag)
+#     tag_list_len = len(tag_list)
+#
+#     for i in range(0, tag_list_len):
+#         if  len(tag_list[i]) > 0:
+#             tag_list[i] = tag_list[i]+ ']'
+#             insert_list = reverse_style(tag_list[i])
+#             stand_matrix.append(insert_list)
+#
+#     return stand_matrix
 
-    for i in range(0, tag_list_len):
-        if  len(tag_list[i]) > 0:
-            tag_list[i] = tag_list[i]+ ']'
-            insert_list = reverse_style(tag_list[i])
-            stand_matrix.append(insert_list)
-    # print stand_matrix
-    return stand_matrix
+def checkWrongState_BMES(labelSequence, size):
+    positionNew = -1
+    positionOther = -1
+    currentLabel = labelSequence[size - 1]
+    assert currentLabel[0] == 'M' or currentLabel[0] == 'E'
+
+    j = size - 2
+    while j >= 0:
+        if positionNew == -1 and currentLabel[2:] == labelSequence[j][2:] and labelSequence[j][0] == 'B' :
+            positionNew = j
+        elif positionOther == -1 and (currentLabel[2:] != labelSequence[j][2:] or labelSequence[j][0] != 'M'):
+            positionOther = j
+
+        if positionOther != -1 and positionNew != -1:
+            break
+
+        j -= 1
+
+    if positionNew == -1:
+        return False
+    elif positionOther < positionNew:
+        return True
+    else:
+        return False
+
+def get_ner_BMES(outputs, return_str_or_not):
+    entities = []
+
+    for idx in range(len(outputs)):
+        labelName = outputs[idx]
+
+        if labelName[0] == 'S' or labelName[0] == 'B':
+            entity = Entity()
+            entity.type = labelName[2:]
+            entity.tkSpans.append([idx, idx])
+            entity.labelSpans.append([labelName])
+            entities.append(entity)
+
+        elif labelName[0] == 'M' or labelName[0] == 'E':
+            if checkWrongState_BMES(outputs, idx+1):
+                entity = entities[-1]
+                entity.tkSpans[-1][1] = idx
+                entity.labelSpans[-1].append(labelName)
+
+    anwserEntities = entities
+
+    if return_str_or_not:
+        # transfer Entity class into its str representation
+        strEntities = []
+        for answer in anwserEntities:
+            strEntity = answer.type
+            for tkSpan in answer.tkSpans:
+                strEntity += '['+str(tkSpan[0])+','+str(tkSpan[1])+']'
+            strEntities.append(strEntity)
+        return strEntities
+    else:
+        return anwserEntities
 
 def combineTwoEntity(a, b):
     c = Entity()

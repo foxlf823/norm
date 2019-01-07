@@ -159,7 +159,7 @@ def test(data, opt):
     # initialize norm models
     if opt.norm_rule and opt.norm_vsm and opt.norm_neural: # ensemble
         logging.info("use ensemble normer")
-        multi_sieve.init(opt, None, data, meddra_dict)
+        multi_sieve.init(opt, None, data, meddra_dict, None, True)
         if opt.ensemble == 'learn':
             if opt.test_in_cpu:
                 ensemble_model = torch.load(os.path.join(opt.output, 'ensemble.pkl'), map_location='cpu')
@@ -229,24 +229,24 @@ def test(data, opt):
 
                 if opt.norm_rule and opt.norm_vsm and opt.norm_neural:
                     if opt.ensemble == 'learn':
-                        ensemble_model.process_one_doc(section, entities, meddra_dict)
+                        ensemble_model.process_one_doc(section, entities, meddra_dict, None, True)
                     else:
                         pred_entities1 = copy.deepcopy(entities)
                         pred_entities2 = copy.deepcopy(entities)
                         pred_entities3 = copy.deepcopy(entities)
-                        multi_sieve.runMultiPassSieve(section, pred_entities1, meddra_dict)
-                        vsm_model.process_one_doc(section, pred_entities2, meddra_dict)
-                        neural_model.process_one_doc(section, pred_entities3, meddra_dict)
+                        multi_sieve.runMultiPassSieve(section, pred_entities1, meddra_dict, True)
+                        vsm_model.process_one_doc(section, pred_entities2, meddra_dict, None, True)
+                        neural_model.process_one_doc(section, pred_entities3, meddra_dict, None, True)
 
                         # merge pred_entities1, pred_entities2, pred_entities3 into entities
-                        ensemble.merge_result(pred_entities1, pred_entities2, pred_entities3, entities, meddra_dict, vsm_model.dict_alphabet, data)
+                        ensemble.merge_result(pred_entities1, pred_entities2, pred_entities3, entities, meddra_dict, True, vsm_model.dict_alphabet, data)
 
                 elif opt.norm_rule:
-                    multi_sieve.runMultiPassSieve(section, entities, meddra_dict)
+                    multi_sieve.runMultiPassSieve(section, entities, meddra_dict, True)
                 elif opt.norm_vsm:
-                    vsm_model.process_one_doc(section, entities, meddra_dict)
+                    vsm_model.process_one_doc(section, entities, meddra_dict, None, True)
                 elif opt.norm_neural:
-                    neural_model.process_one_doc(section, entities, meddra_dict)
+                    neural_model.process_one_doc(section, entities, meddra_dict, None, True)
 
 
                 for entity in entities:
