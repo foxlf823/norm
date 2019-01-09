@@ -5,7 +5,7 @@ import codecs
 import re
 import shutil
 from jpype import *
-from data import get_fda_file
+from data import get_fda_file, get_bioc_file
 import logging
 from data_structure import Entity
 import norm_utils
@@ -623,7 +623,7 @@ class Terminology:
                             for simpleConceptName in simpleConceptNames:
                                 self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap,
                                                                           simpleConceptName,
-                                                                          cui)
+                                                                          cui[0])
 
     def loadTrainingDataTerminology_frompath(self, path, dictionary_reverse, isMeddra_dict):
 
@@ -632,13 +632,12 @@ class Terminology:
                 continue
             input_file_path = os.path.join(path, input_file_name)
 
-            annotation_file = get_fda_file(input_file_path)
+            if isMeddra_dict:
+                annotation_file = get_fda_file(input_file_path)
 
-            for mention in annotation_file.mentions:
-                conceptName = mention.name.lower().strip()
-                for idx, norm_id in enumerate(mention.norm_ids):
-
-                    if isMeddra_dict:
+                for mention in annotation_file.mentions:
+                    conceptName = mention.name.lower().strip()
+                    for idx, norm_id in enumerate(mention.norm_ids):
 
                         self.loadMaps(conceptName, norm_id)
 
@@ -648,9 +647,19 @@ class Terminology:
                         for simpleConceptName in simpleConceptNames:
                             self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
 
-                    else:
-                        if norm_id in dictionary_reverse:
-                            cui = dictionary_reverse[norm_id]
+            else:
+
+                annotation_file = get_bioc_file(input_file_path)
+                bioc_passage = annotation_file[0].passages[0]
+
+                for entity in bioc_passage.annotations:
+                    if opt.types and (entity.infons['type'] not in opt.type_filter):
+                        continue
+                    conceptName = entity.text.lower().strip()
+                    if ('SNOMED code' in entity.infons and entity.infons['SNOMED code'] != 'N/A') :
+
+                        if entity.infons['SNOMED code'] in dictionary_reverse:
+                            cui = dictionary_reverse[entity.infons['SNOMED code']]
                             self.loadMaps(conceptName, cui[0])
 
                             simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(
@@ -658,7 +667,23 @@ class Terminology:
                             for simpleConceptName in simpleConceptNames:
                                 self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap,
                                                                           simpleConceptName,
-                                                                          cui)
+                                                                          cui[0])
+
+
+                    elif ('MedDRA code' in entity.infons and entity.infons['MedDRA code'] != 'N/A') :
+
+                        if entity.infons['MedDRA code'] in dictionary_reverse:
+                            cui = dictionary_reverse[entity.infons['MedDRA code']]
+                            self.loadMaps(conceptName, cui[0])
+
+                            simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(
+                                re.split(r"\s+", conceptName))
+                            for simpleConceptName in simpleConceptNames:
+                                self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap,
+                                                                          simpleConceptName,
+                                                                          cui[0])
+
+
 
     def loadTAC2017Terminology(self, path):
         for input_file_name in os.listdir(path):
@@ -1755,7 +1780,10 @@ def init(opt, train_data, d, dictionary, dictionary_reverse, isMeddra_dict):
 
     if d.config.get('norm_rule_use_trainset') != '0':
         if train_data is None:
-            Sieve.setTrainingDataTerminology_frompath(opt.train_file, dictionary_reverse, isMeddra_dict)
+            if isMeddra_dict:
+                Sieve.setTrainingDataTerminology_frompath(opt.train_file, dictionary_reverse, isMeddra_dict)
+            else:
+                Sieve.setTrainingDataTerminology_frompath(os.path.join(opt.train_file, "bioc"), dictionary_reverse, isMeddra_dict)
         else:
             Sieve.setTrainingDataTerminology(train_data, dictionary_reverse, isMeddra_dict)
 
@@ -1781,14 +1809,23 @@ def runMultiPassSieve(document, entities, dictionary, isMeddra_dict):
     abbreviationObject.setTextAbbreviationExpansionMap(document.text)
 
     for entity in entities:
-        concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
-        concept.setNameExpansion(document.text, abbreviationObject)
-        concept.setStemmedName()
-        concepts.append(concept)
+        # debug feili
+        # print("{} {} {}".format(entity.name, entity.spans[0][0], entity.spans[0][1]))
+        try:
+            concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
+            concept.setNameExpansion(document.text, abbreviationObject)
+            concept.setStemmedName()
+            concepts.append(concept)
 
-        MultiPassSieveNormalizer.applyMultiPassSieve(concept)
-        if concept.getCui() == u"":
+            MultiPassSieveNormalizer.applyMultiPassSieve(concept)
+            if concept.getCui() == u"":
+                concept.setCui(u"CUI-less")
+        except Exception as e:
+            print("error when process {} in {}".format(entity.name, document.name))
+            concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
             concept.setCui(u"CUI-less")
+            concepts.append(concept)
+            continue
 
 
     # fill norm name and id into entity

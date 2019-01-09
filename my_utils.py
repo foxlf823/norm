@@ -134,7 +134,7 @@ def batchify_with_label(data, input_batch_list, input_batch_list_text, gpu):
 
 
         _, word_seq_recover = word_perm_idx.sort(0, descending=False)
-        if torch.cuda.is_available():
+        if opt.gpu >= 0 and torch.cuda.is_available():
             word_seq_tensor = word_seq_tensor.cuda(gpu)
 
             word_seq_lengths = word_seq_lengths.cuda(gpu)

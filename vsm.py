@@ -31,7 +31,7 @@ class VsmNormer(nn.Module):
         self.linear = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
         self.linear.weight.data.copy_(torch.eye(self.embedding_dim))
 
-        if torch.cuda.is_available():
+        if opt.gpu >= 0 and torch.cuda.is_available():
             self.word_embedding = self.word_embedding.cuda(self.gpu)
             self.linear = self.linear.cuda(self.gpu)
 
@@ -264,7 +264,7 @@ def init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict
 
     poses = pad_sequence(poses, max_len)
 
-    if torch.cuda.is_available():
+    if opt.gpu >= 0 and torch.cuda.is_available():
         poses = poses.cuda(opt.gpu)
 
     return poses
@@ -281,7 +281,7 @@ def my_collate(batch):
     y = torch.LongTensor(y).view(-1)
 
 
-    if torch.cuda.is_available():
+    if opt.gpu >= 0 and torch.cuda.is_available():
         x = x.cuda(opt.gpu)
         lengths = lengths.cuda(opt.gpu)
         y = y.cuda(opt.gpu)

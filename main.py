@@ -101,6 +101,9 @@ elif opt.whattodo == 2:
 
 else:
     d.load(os.path.join(opt.output, "data.pkl"))
+
+    d_new = data.Data(opt)
+    d.config = d_new.config
     logging.info(d.config)
 
     test.test(d, opt)

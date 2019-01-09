@@ -18,7 +18,7 @@ class CharCNN(nn.Module):
         else:
             self.char_embeddings.weight.data.copy_(torch.from_numpy(self.random_embedding(alphabet_size, embedding_dim)))
         self.char_cnn = nn.Conv1d(embedding_dim, self.hidden_dim, kernel_size=3, padding=1)
-        if torch.cuda.is_available():
+        if self.gpu >= 0 and torch.cuda.is_available():
             self.char_drop = self.char_drop.cuda(self.gpu)
             self.char_embeddings = self.char_embeddings.cuda(self.gpu)
             self.char_cnn = self.char_cnn.cuda(self.gpu)

@@ -7,14 +7,18 @@ from my_utils import get_bioc_file
 from data_structure import Entity,Document
 import logging
 from norm_utils import evaluate_for_ehr
+from options import opt
+import data
+import multi_sieve
+from my_utils import get_text_file
 
 type_we_care = set(['ADE','SSLIF', 'Indication'])
 
-def parse_bioc(directory, fileName):
+def parse_one_gold_file(annotation_dir, corpus_dir, fileName):
     document = Document()
     document.name = fileName[:fileName.find('.')]
 
-    annotation_file = get_bioc_file(join(directory, fileName))
+    annotation_file = get_bioc_file(join(annotation_dir, fileName))
     bioc_passage = annotation_file[0].passages[0]
     entities = []
 
@@ -45,18 +49,22 @@ def parse_bioc(directory, fileName):
 
     document.entities = entities
 
+    corpus_file = get_text_file(join(corpus_dir, fileName.split('.bioc')[0]))
+    document.text = corpus_file
+
     return document
 
 
-if __name__=="__main__":
-
-
+def metamap_ner_re(d):
     print("load umls ...")
-    UMLS_dict, _ = umls.load_umls_MRCONSO("/Users/feili/UMLS/2016AA_Snomed_Meddra/META/MRCONSO.RRF")
+    UMLS_dict, _ = umls.load_umls_MRCONSO(d.config['norm_dict'])
 
-    # base_dir =
+
     predict_dir = "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap"
-    gold_dir = "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/bioc"
+    annotation_dir = os.path.join(opt.test_file, 'bioc')
+    corpus_dir = os.path.join(opt.test_file, 'txt')
+
+    annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
 
     ct_ner_predict = 0
     ct_ner_gold = 0
@@ -67,9 +75,9 @@ if __name__=="__main__":
     ct_norm_correct = 0
 
 
-    for gold_file_name in listdir(gold_dir):
+    for gold_file_name in annotation_files:
 
-        gold_document = parse_bioc(gold_dir, gold_file_name)
+        gold_document = parse_one_gold_file(annotation_dir, corpus_dir, gold_file_name)
 
         predict_document = metamap.load_metamap_result_from_file(join(predict_dir, gold_file_name[:gold_file_name.find('.')]+".field.txt"))
 
@@ -95,9 +103,6 @@ if __name__=="__main__":
         ct_norm_correct += p3
 
 
-
-
-
     p = ct_ner_correct*1.0/ct_ner_predict
     r = ct_ner_correct*1.0/ct_ner_gold
     f1 = 2.0*p*r/(p+r)
@@ -107,4 +112,65 @@ if __name__=="__main__":
     r = ct_norm_correct*1.0/ct_norm_gold
     f1 = 2.0*p*r/(p+r)
     print("NORM p: %.4f | r: %.4f | f1: %.4f" % (p, r, f1))
+
+
+def metamap_ner_my_norm(d):
+    print("load umls ...")
+
+    UMLS_dict, UMLS_dict_reverse = umls.load_umls_MRCONSO(d.config['norm_dict'])
+
+    predict_dir = "/Users/feili/Desktop/umass/CancerADE_SnoM_30Oct2017_test/metamap"
+    annotation_dir = os.path.join(opt.test_file, 'bioc')
+    corpus_dir = os.path.join(opt.test_file, 'txt')
+    annotation_files = [f for f in listdir(annotation_dir) if isfile(join(annotation_dir, f))]
+
+    if opt.norm_rule:
+        multi_sieve.init(opt, None, d, UMLS_dict, UMLS_dict_reverse, False)
+
+    ct_norm_predict = 0
+    ct_norm_gold = 0
+    ct_norm_correct = 0
+
+    for gold_file_name in annotation_files:
+        print("# begin {}".format(gold_file_name))
+        gold_document = parse_one_gold_file(annotation_dir, corpus_dir, gold_file_name)
+
+        predict_document = metamap.load_metamap_result_from_file(
+            join(predict_dir, gold_file_name[:gold_file_name.find('.')] + ".field.txt"))
+
+        # copy entities from metamap entities
+        pred_entities = []
+        for gold in predict_document.entities:
+            pred = Entity()
+            pred.id = gold.id
+            pred.type = gold.type
+            pred.spans = gold.spans
+            pred.section = gold.section
+            pred.name = gold.name
+            pred_entities.append(pred)
+
+        if opt.norm_rule:
+            multi_sieve.runMultiPassSieve(gold_document, pred_entities, UMLS_dict, False)
+        else:
+            raise RuntimeError("wrong configuration")
+
+        p1, p2, p3 = evaluate_for_ehr(gold_document.entities, pred_entities, UMLS_dict)
+
+        ct_norm_gold += p1
+        ct_norm_predict += p2
+        ct_norm_correct += p3
+
+
+    p = ct_norm_correct*1.0/ct_norm_predict
+    r = ct_norm_correct*1.0/ct_norm_gold
+    f1 = 2.0*p*r/(p+r)
+    print("NORM p: %.4f | r: %.4f | f1: %.4f" % (p, r, f1))
+
+
+if __name__=="__main__":
+
+    d = data.Data(opt)
+
+    # metamap_ner_re(d)
+    metamap_ner_my_norm(d)
 

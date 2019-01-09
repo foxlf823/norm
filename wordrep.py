@@ -50,7 +50,7 @@ class WordRep(nn.Module):
             self.feature_num = 0
 
 
-        if torch.cuda.is_available():
+        if opt.gpu >= 0 and torch.cuda.is_available():
             self.drop = self.drop.cuda(self.gpu)
             self.word_embedding = self.word_embedding.cuda(self.gpu)
             if data.feat_config is not None:
@@ -92,7 +92,7 @@ class WordRep(nn.Module):
         if self.use_elmo:
             with torch.no_grad():
                 elmo_rep = torch.from_numpy(np.array(self.elmo.sents2elmo(text_inputs))) # batch, seq_len, 1024
-                if torch.cuda.is_available():
+                if self.gpu >= 0 and torch.cuda.is_available():
                     elmo_rep = elmo_rep.cuda(self.gpu)
 
             char_features = self.elmo_drop(self.elmo_projection(elmo_rep))

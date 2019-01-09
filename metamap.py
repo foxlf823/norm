@@ -64,13 +64,23 @@ def load_metamap_result_from_file(file_path):
                                                                                                       '/') + 1:]))
                         continue
 
+
                     tmps = span.split(u"/")
                     entity = Entity()
                     entity.spans.append([int(tmps[0]), int(tmps[0]) + int(tmps[1])])
                     entity.norm_ids.append(str(UMLS_ID))
                     # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
                     tmps = triggers[idx].split(u"-")
-                    entity.name = tmps[3]
+
+                    if tmps[3].find('"') == -1:
+                        print("ignore non-string entity: {} in {}".format(tmps[3],
+                                                                                                  file_path[
+                                                                                                  file_path.rfind(
+                                                                                                      '/') + 1:]))
+                        continue
+
+
+                    entity.name = tmps[3][1:-1] # remove ""
 
                     entities.append(entity)
                 else:
@@ -88,7 +98,15 @@ def load_metamap_result_from_file(file_path):
                         entity.norm_ids.append(str(UMLS_ID))
                         # "B cell lymphoma"-tx-5-"B cell lymphoma"-noun-0
                         tmps = triggers[idx].split(u"-")
-                        entity.name = tmps[3]
+
+                        if tmps[3].find('"') == -1:
+                            print("ignore non-string entity: {} in {}".format(tmps[3],
+                                                                              file_path[
+                                                                              file_path.rfind(
+                                                                                  '/') + 1:]))
+                            continue
+
+                        entity.name = tmps[3][1:-1]
 
                         entities.append(entity)
 

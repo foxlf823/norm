@@ -33,7 +33,7 @@ class DotAttentionLayer(nn.Module):
 
         # computing mask
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        if torch.cuda.is_available():
+        if opt.gpu >= 0 and torch.cuda.is_available():
             idxes = idxes.cuda(opt.gpu)
         mask = (idxes<lengths.unsqueeze(1)).float()
 
@@ -57,7 +57,7 @@ class NeuralNormer(nn.Module):
         self.linear = nn.Linear(self.embedding_dim, norm_utils.get_dict_size(self.dict_alphabet), bias=False)
         self.criterion = nn.CrossEntropyLoss()
 
-        if torch.cuda.is_available():
+        if opt.gpu >= 0 and torch.cuda.is_available():
             self.word_embedding = self.word_embedding.cuda(self.gpu)
             #self.attn = self.attn.cuda(self.gpu)
             self.linear = self.linear.cuda(self.gpu)
@@ -211,7 +211,7 @@ def my_collate(batch):
 
     x, lengths, y = pad(x, y)
 
-    if torch.cuda.is_available():
+    if opt.gpu >= 0 and torch.cuda.is_available():
         x = x.cuda(opt.gpu)
         lengths = lengths.cuda(opt.gpu)
         y = y.cuda(opt.gpu)

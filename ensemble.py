@@ -50,7 +50,7 @@ class Ensemble(nn.Module):
 
         self.criterion = nn.CrossEntropyLoss()
 
-        if torch.cuda.is_available():
+        if opt.gpu >= 0 and torch.cuda.is_available():
             self.word_embedding = self.word_embedding.cuda(self.gpu)
             self.vsm_linear = self.vsm_linear.cuda(self.gpu)
             self.neural_linear = self.neural_linear.cuda(self.gpu)
@@ -259,7 +259,7 @@ def my_collate(batch):
     lengths = torch.LongTensor(lengths)
     y = torch.LongTensor(y).view(-1)
 
-    if torch.cuda.is_available():
+    if opt.gpu >= 0 and torch.cuda.is_available():
         words = words.cuda(opt.gpu)
         rules = rules.cuda(opt.gpu)
         lengths = lengths.cuda(opt.gpu)
