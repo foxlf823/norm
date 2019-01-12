@@ -11,6 +11,7 @@ from options import opt
 import data
 import multi_sieve
 from my_utils import get_text_file
+import torch
 
 type_we_care = set(['ADE','SSLIF', 'Indication'])
 
@@ -126,6 +127,13 @@ def metamap_ner_my_norm(d):
 
     if opt.norm_rule:
         multi_sieve.init(opt, None, d, UMLS_dict, UMLS_dict_reverse, False)
+    elif opt.norm_neural:
+        logging.info("use neural-based normer")
+        if opt.test_in_cpu:
+            neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'), map_location='cpu')
+        else:
+            neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
+        neural_model.eval()
 
     ct_norm_predict = 0
     ct_norm_gold = 0
@@ -151,6 +159,8 @@ def metamap_ner_my_norm(d):
 
         if opt.norm_rule:
             multi_sieve.runMultiPassSieve(gold_document, pred_entities, UMLS_dict, False)
+        elif opt.norm_neural:
+            neural_model.process_one_doc(gold_document, pred_entities, UMLS_dict, UMLS_dict_reverse, False)
         else:
             raise RuntimeError("wrong configuration")
 

@@ -272,17 +272,28 @@ def generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_d
             else:
                 continue
 
-            for concept_name in concept.names:
+            # for concept_name in concept.names:
+            #
+            #     tokens = my_tokenize(concept_name)
+            #     word_ids = []
+            #     for token in tokens:
+            #         token = norm_utils.word_preprocess(token)
+            #         word_id = word_alphabet.get_index(token)
+            #         word_ids.append(word_id)
+            #
+            #     Ys.append(Y)
+            #     Xs.append(word_ids)
 
-                tokens = my_tokenize(concept_name)
-                word_ids = []
-                for token in tokens:
-                    token = norm_utils.word_preprocess(token)
-                    word_id = word_alphabet.get_index(token)
-                    word_ids.append(word_id)
 
-                Ys.append(Y)
-                Xs.append(word_ids)
+            tokens = my_tokenize(concept.names[0])
+            word_ids = []
+            for token in tokens:
+                token = norm_utils.word_preprocess(token)
+                word_id = word_alphabet.get_index(token)
+                word_ids.append(word_id)
+
+            Ys.append(Y)
+            Xs.append(word_ids)
 
 
     return Xs, Ys
