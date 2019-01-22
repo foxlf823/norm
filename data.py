@@ -754,18 +754,18 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
             else:
                 pretrain_emb[index,:] = embedd_dict[word.lower()]
             case_match += 1
-        # elif re.sub('\d', '0', word) in embedd_dict:
-        #     if norm:
-        #         pretrain_emb[index,:] = norm2one(embedd_dict[re.sub('\d', '0', word)])
-        #     else:
-        #         pretrain_emb[index,:] = embedd_dict[re.sub('\d', '0', word)]
-        #     digits_replaced_with_zeros_found += 1
-        # elif re.sub('\d', '0', word.lower()) in embedd_dict:
-        #     if norm:
-        #         pretrain_emb[index,:] = norm2one(embedd_dict[re.sub('\d', '0', word.lower())])
-        #     else:
-        #         pretrain_emb[index,:] = embedd_dict[re.sub('\d', '0', word.lower())]
-        #     lowercase_and_digits_replaced_with_zeros_found += 1
+        elif re.sub('\d', '0', word) in embedd_dict:
+            if norm:
+                pretrain_emb[index,:] = norm2one(embedd_dict[re.sub('\d', '0', word)])
+            else:
+                pretrain_emb[index,:] = embedd_dict[re.sub('\d', '0', word)]
+            digits_replaced_with_zeros_found += 1
+        elif re.sub('\d', '0', word.lower()) in embedd_dict:
+            if norm:
+                pretrain_emb[index,:] = norm2one(embedd_dict[re.sub('\d', '0', word.lower())])
+            else:
+                pretrain_emb[index,:] = embedd_dict[re.sub('\d', '0', word.lower())]
+            lowercase_and_digits_replaced_with_zeros_found += 1
         else:
             pretrain_emb[index,:] = np.random.uniform(-scale, scale, [1, embedd_dim])
             not_match += 1

@@ -53,24 +53,24 @@ class NeuralNormer(nn.Module):
         self.dict_alphabet = dict_alphabet
         self.gpu = opt.gpu
 
-        #self.attn = DotAttentionLayer(self.embedding_dim)
+        self.attn = DotAttentionLayer(self.embedding_dim)
         self.linear = nn.Linear(self.embedding_dim, norm_utils.get_dict_size(self.dict_alphabet), bias=False)
         self.criterion = nn.CrossEntropyLoss()
 
         if opt.gpu >= 0 and torch.cuda.is_available():
             self.word_embedding = self.word_embedding.cuda(self.gpu)
-            #self.attn = self.attn.cuda(self.gpu)
+            self.attn = self.attn.cuda(self.gpu)
             self.linear = self.linear.cuda(self.gpu)
 
 
     def forward(self, x, lengths):
-        length = x.size(1)
+        # length = x.size(1)
         x = self.word_embedding(x)
 
-        #x = self.attn((x, lengths))
-        x = x.unsqueeze_(1)
-        x = functional.avg_pool2d(x, (length, 1))
-        x = x.squeeze_(1).squeeze_(1)
+        x = self.attn((x, lengths))
+        # x = x.unsqueeze_(1)
+        # x = functional.avg_pool2d(x, (length, 1))
+        # x = x.squeeze_(1).squeeze_(1)
 
         x = self.linear(x)
 
@@ -299,48 +299,19 @@ def generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_d
     return Xs, Ys
 
 
-def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict):
+def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict, optimizer, neural_model):
     logging.info('use dict pretrain ...')
 
-    logging.info("build alphabet ...")
-    word_alphabet = Alphabet('word')
-    norm_utils.build_alphabet_from_dict(word_alphabet, dictionary, isMeddra_dict)
-    norm_utils.fix_alphabet(word_alphabet)
-
-    if d.config.get('norm_emb') is not None:
-        logging.info("load pretrained word embedding ...")
-        pretrain_word_embedding, word_emb_dim = build_pretrain_embedding(d.config.get('norm_emb'),
-                                                                         word_alphabet,
-                                                                              opt.word_emb_dim, False)
-        word_embedding = nn.Embedding(word_alphabet.size(), word_emb_dim, padding_idx=0)
-        word_embedding.weight.data.copy_(torch.from_numpy(pretrain_word_embedding))
-        embedding_dim = word_emb_dim
-    else:
-        logging.info("randomly initialize word embedding ...")
-        word_embedding = nn.Embedding(word_alphabet.size(), d.word_emb_dim, padding_idx=0)
-        word_embedding.weight.data.copy_(
-            torch.from_numpy(random_embedding(word_alphabet.size(), d.word_emb_dim)))
-        embedding_dim = d.word_emb_dim
-
-    dict_alphabet = Alphabet('dict')
-    norm_utils.init_dict_alphabet(dict_alphabet, dictionary)
-    norm_utils.fix_alphabet(dict_alphabet)
-
-    neural_model = NeuralNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet)
-
-    dict_Xs, dict_Ys = generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_dict)
+    dict_Xs, dict_Ys = generate_dict_instances(dictionary, neural_model.dict_alphabet, neural_model.word_alphabet, isMeddra_dict)
 
     data_loader = DataLoader(MyDataset(dict_Xs, dict_Ys), opt.batch_size, shuffle=True, collate_fn=my_collate)
-
-
-    optimizer = optim.Adam(neural_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
-
-    if opt.tune_wordemb == False:
-        freeze_net(neural_model.word_embedding)
 
     expected_accuracy = int(d.config['norm_neural_pretrain_accuracy'])
 
     logging.info("start dict pretraining ...")
+
+    bad_counter = 0
+    best_accuracy = 0
 
     for idx in range(9999):
         epoch_start = time.time()
@@ -348,6 +319,8 @@ def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict):
         neural_model.train()
 
         correct, total = 0, 0
+
+        sum_loss = 0
 
         train_iter = iter(data_loader)
         num_iter = len(data_loader)
@@ -359,6 +332,8 @@ def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict):
             y_pred = neural_model.forward(x, lengths)
 
             l = neural_model.loss(y_pred, y)
+
+            sum_loss += l.item()
 
             l.backward()
 
@@ -373,17 +348,28 @@ def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict):
 
         epoch_finish = time.time()
         accuracy = 100.0 * correct / total
-        logging.info("epoch: %s pretraining finished. Time: %.2fs. Accuracy %.2f" % (idx, epoch_finish - epoch_start, accuracy))
+        logging.info("epoch: %s pretraining finished. Time: %.2fs. loss: %.4f Accuracy %.2f" % (
+            idx, epoch_finish - epoch_start, sum_loss / num_iter, accuracy))
+
 
         if accuracy > expected_accuracy:
-
             logging.info("Exceed {}% training accuracy, breaking ... ".format(expected_accuracy))
             break
 
-    return neural_model
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            bad_counter = 0
+        else:
+            bad_counter += 1
+
+        if bad_counter >= opt.patience:
+            logging.info('Early Stop!')
+            break
+
+    return
 
 
-def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, pretrain_model, isMeddra_dict):
+def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, isMeddra_dict):
     logging.info("train the neural-based normalization model ...")
 
     external_train_data = []
@@ -429,9 +415,6 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     norm_utils.fix_alphabet(dict_alphabet)
 
     neural_model = NeuralNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet)
-    if pretrain_model is not None:
-        # neural_model.attn.W.weight.data.copy_(pretrain_model.attn.W.weight.data)
-        neural_model.linear.weight.data.copy_(pretrain_model.linear.weight.data)
 
     train_X = []
     train_Y = []
@@ -451,6 +434,10 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     if opt.tune_wordemb == False:
         freeze_net(neural_model.word_embedding)
 
+    if d.config['norm_neural_pretrain'] == '1':
+        dict_pretrain(dictionary, dictionary_reverse, d, True, optimizer, neural_model)
+
+
     best_dev_f = -10
     best_dev_p = -10
     best_dev_r = -10
@@ -467,6 +454,10 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         train_iter = iter(train_loader)
         num_iter = len(train_loader)
 
+        sum_loss = 0
+
+        correct, total = 0, 0
+
         for i in range(num_iter):
 
             x, lengths, y = next(train_iter)
@@ -475,6 +466,8 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
 
             l = neural_model.loss(y_pred, y)
 
+            sum_loss += l.item()
+
             l.backward()
 
             if opt.gradient_clip > 0:
@@ -482,8 +475,14 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
             optimizer.step()
             neural_model.zero_grad()
 
+            total += y.size(0)
+            _, pred = torch.max(y_pred, 1)
+            correct += (pred == y).sum().item()
+
         epoch_finish = time.time()
-        logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
+        accuracy = 100.0 * correct / total
+        logging.info("epoch: %s training finished. Time: %.2fs. loss: %.4f Accuracy %.2f" % (
+        idx, epoch_finish - epoch_start, sum_loss / num_iter, accuracy))
 
         if opt.dev_file:
             p, r, f = norm_utils.evaluate(dev_data, dictionary, dictionary_reverse, None, neural_model, None, d, isMeddra_dict)

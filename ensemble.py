@@ -277,7 +277,7 @@ def pad_sequence(x, max_len):
 
     return padded_x
 
-def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, pretrain_model, isMeddra_dict):
+def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, isMeddra_dict):
     logging.info("train the ensemble normalization model ...")
 
     external_train_data = []
@@ -328,8 +328,10 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         logging.info("init ensemble normer")
         poses = vsm.init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict)
         ensemble_model = Ensemble(word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses)
-        if pretrain_model is not None:
-            ensemble_model.neural_linear.weight.data.copy_(pretrain_model.linear.weight.data)
+        if pretrain_neural_model is not None:
+            ensemble_model.neural_linear.weight.data.copy_(pretrain_neural_model.linear.weight.data)
+        if pretrain_vsm_model is not None:
+            ensemble_model.vsm_linear.weight.data.copy_(pretrain_vsm_model.linear.weight.data)
         ensemble_train_X = []
         ensemble_train_Y = []
         for doc in train_data:
@@ -364,12 +366,13 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         if opt.tune_wordemb == False:
             freeze_net(vsm_model.word_embedding)
 
+        if d.config['norm_vsm_pretrain'] == '1':
+            vsm.dict_pretrain(dictionary, dictionary_reverse, d, True, vsm_optimizer, vsm_model)
+
         # neural
         logging.info("init neural-based normer")
         neural_model = norm_neural.NeuralNormer(word_alphabet, copy.deepcopy(word_embedding), embedding_dim, dict_alphabet)
-        if pretrain_model is not None:
-            # neural_model.attn.W.weight.data.copy_(pretrain_model.attn.W.weight.data)
-            neural_model.linear.weight.data.copy_(pretrain_model.linear.weight.data)
+
         neural_train_X = []
         neural_train_Y = []
         for doc in train_data:
@@ -385,6 +388,8 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         if opt.tune_wordemb == False:
             freeze_net(neural_model.word_embedding)
 
+        if d.config['norm_neural_pretrain'] == '1':
+            neural_model.dict_pretrain(dictionary, dictionary_reverse, d, True, neural_optimizer, neural_model)
 
 
     best_dev_f = -10
@@ -427,7 +432,7 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
             for i in range(vsm_num_iter):
                 x, lengths, y = next(vsm_train_iter)
 
-                l = vsm_model.forward_train(x, lengths, y)
+                l, _ = vsm_model.forward_train(x, lengths, y)
 
                 l.backward()
 

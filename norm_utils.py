@@ -8,6 +8,16 @@ import copy
 import logging
 import ensemble
 
+
+def normalize_word(word):
+    new_word = ""
+    for char in word:
+        if char.isdigit():
+            new_word += '0'
+        else:
+            new_word += char
+    return new_word
+
 def word_preprocess(word):
     if opt.number_normalized:
         word = normalize_word(word)

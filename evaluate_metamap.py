@@ -134,6 +134,13 @@ def metamap_ner_my_norm(d):
         else:
             neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
         neural_model.eval()
+    elif opt.norm_vsm:
+        logging.info("use vsm-based normer")
+        if opt.test_in_cpu:
+            vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'), map_location='cpu')
+        else:
+            vsm_model = torch.load(os.path.join(opt.output, 'vsm.pkl'))
+        vsm_model.eval()
 
     ct_norm_predict = 0
     ct_norm_gold = 0
@@ -161,6 +168,8 @@ def metamap_ner_my_norm(d):
             multi_sieve.runMultiPassSieve(gold_document, pred_entities, UMLS_dict, False)
         elif opt.norm_neural:
             neural_model.process_one_doc(gold_document, pred_entities, UMLS_dict, UMLS_dict_reverse, False)
+        elif opt.norm_vsm:
+            vsm_model.process_one_doc(gold_document, pred_entities, UMLS_dict, UMLS_dict_reverse, False)
         else:
             raise RuntimeError("wrong configuration")
 

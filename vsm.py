@@ -14,11 +14,11 @@ import random
 from torch.utils.data import DataLoader, Dataset
 import torch.optim as optim
 import time
-from tqdm import tqdm
+from norm_neural import DotAttentionLayer
 
 class VsmNormer(nn.Module):
 
-    def __init__(self, word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses):
+    def __init__(self, word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses, poses_lengths):
         super(VsmNormer, self).__init__()
         self.word_alphabet = word_alphabet
         self.embedding_dim = embedding_dim
@@ -27,59 +27,84 @@ class VsmNormer(nn.Module):
         self.gpu = opt.gpu
         self.poses = poses
         self.dict_size = norm_utils.get_dict_size(dict_alphabet)
+        self.margin = 1
+        self.poses_lengths = poses_lengths
 
+        self.attn = DotAttentionLayer(self.embedding_dim)
         self.linear = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
         self.linear.weight.data.copy_(torch.eye(self.embedding_dim))
 
         if opt.gpu >= 0 and torch.cuda.is_available():
             self.word_embedding = self.word_embedding.cuda(self.gpu)
+            self.attn = self.attn.cuda(self.gpu)
             self.linear = self.linear.cuda(self.gpu)
 
 
     def forward_train(self, mention, lengths, y):
 
-        length = mention.size(1)
+        # length = mention.size(1)
         mention_word_emb = self.word_embedding(mention)
-        mention_word_emb = mention_word_emb.unsqueeze_(1)
-        mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
-        mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
+        # mention_word_emb = mention_word_emb.unsqueeze_(1)
+        # mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
+        # mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
+        mention_word_pool = self.attn((mention_word_emb, lengths))
 
-        length = self.poses.size(1)
+        # length = self.poses.size(1)
         pos_word_emb = self.word_embedding(self.poses)
-        pos_word_emb = pos_word_emb.unsqueeze_(1)
-        pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
-        pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)
+        # pos_word_emb = pos_word_emb.unsqueeze_(1)
+        # pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
+        # pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)
+        pos_word_pool = self.attn((pos_word_emb, self.poses_lengths))
 
         m_W = self.linear(mention_word_pool)
 
         pos_similarity = torch.matmul(m_W, torch.t(pos_word_pool))
 
 
-        y = y.unsqueeze(-1).expand(-1, self.dict_size)
+        y_expand = y.unsqueeze(-1).expand(-1, self.dict_size)
 
 
-        a = torch.gather(pos_similarity, 1, y)
+        a = torch.gather(pos_similarity, 1, y_expand)
 
 
-        loss = (1-a+pos_similarity).clamp(min=0)
+        loss = (self.margin-a+pos_similarity).clamp(min=0)
 
-        loss = torch.sum(loss)-1
+        batch_size = mention.size(0)
+        one_hot = torch.zeros(batch_size, self.dict_size)
+        if opt.gpu >= 0 and torch.cuda.is_available():
+            one_hot = one_hot.cuda(opt.gpu)
+
+        one_hot = one_hot.scatter_(1, y.unsqueeze(-1), self.margin)
+
+        loss = torch.sum(loss - one_hot) / batch_size
+
+        # y = y.unsqueeze(-1).expand(-1, self.dict_size)
+        #
+        #
+        # a = torch.gather(pos_similarity, 1, y)
+        #
+        #
+        # loss = (1-a+pos_similarity).clamp(min=0)
+        #
+        # loss = torch.sum(loss)-1
 
 
-        return loss
+        return loss, pos_similarity
 
     def forward_eval(self, mention, lengths):
-        length = mention.size(1)
+        # length = mention.size(1)
         mention_word_emb = self.word_embedding(mention)
-        mention_word_emb = mention_word_emb.unsqueeze_(1)
-        mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
-        mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
+        # mention_word_emb = mention_word_emb.unsqueeze_(1)
+        # mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
+        # mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
+        mention_word_pool = self.attn((mention_word_emb, lengths))
 
-        length = self.poses.size(1)
+        # length = self.poses.size(1)
         pos_word_emb = self.word_embedding(self.poses)
-        pos_word_emb = pos_word_emb.unsqueeze_(1)
-        pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
-        pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)
+        # pos_word_emb = pos_word_emb.unsqueeze_(1)
+        # pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
+        # pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)
+        pos_word_pool = self.attn((pos_word_emb, self.poses_lengths))
 
         m_W = self.linear(mention_word_pool)
 
@@ -240,6 +265,7 @@ def init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict
 
     # pos
     poses = []
+    poses_lengths = []
     dict_size = norm_utils.get_dict_size(dict_alphabet)
     max_len = 0
     for i in range(dict_size):
@@ -261,13 +287,16 @@ def init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict
             max_len = len(pos)
 
         poses.append(pos)
+        poses_lengths.append(len(pos))
 
     poses = pad_sequence(poses, max_len)
+    poses_lengths = torch.LongTensor(poses_lengths)
 
     if opt.gpu >= 0 and torch.cuda.is_available():
         poses = poses.cuda(opt.gpu)
+        poses_lengths = poses_lengths.cuda(opt.gpu)
 
-    return poses
+    return poses, poses_lengths
 
 
 def my_collate(batch):
@@ -297,6 +326,134 @@ def pad_sequence(x, max_len):
     padded_x = torch.LongTensor(padded_x)
 
     return padded_x
+
+
+def generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_dict):
+    Xs = []
+    Ys = []
+    dict_size = norm_utils.get_dict_size(dict_alphabet)
+
+    if isMeddra_dict:
+        for concept_id, concept_name in dictionary.items():
+
+            Y = norm_utils.get_dict_index(dict_alphabet, concept_id)
+            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                Ys.append(Y)
+            else:
+                continue
+
+
+            tokens = my_tokenize(concept_name)
+            word_ids = []
+            for token in tokens:
+                token = norm_utils.word_preprocess(token)
+                word_id = word_alphabet.get_index(token)
+                word_ids.append(word_id)
+
+            Xs.append(word_ids)
+    else:
+        for concept_id, concept in dictionary.items():
+            Y = norm_utils.get_dict_index(dict_alphabet, concept_id)
+            if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
+                pass
+            else:
+                continue
+
+            # for concept_name in concept.names:
+            #
+            #     tokens = my_tokenize(concept_name)
+            #     word_ids = []
+            #     for token in tokens:
+            #         token = norm_utils.word_preprocess(token)
+            #         word_id = word_alphabet.get_index(token)
+            #         word_ids.append(word_id)
+            #
+            #     Ys.append(Y)
+            #     Xs.append(word_ids)
+
+
+            tokens = my_tokenize(concept.names[0])
+            word_ids = []
+            for token in tokens:
+                token = norm_utils.word_preprocess(token)
+                word_id = word_alphabet.get_index(token)
+                word_ids.append(word_id)
+
+            Ys.append(Y)
+            Xs.append(word_ids)
+
+    return Xs, Ys
+
+
+
+
+
+def dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict, optimizer, vsm_model):
+    logging.info('use dict pretrain ...')
+
+    dict_Xs, dict_Ys = generate_dict_instances(dictionary, vsm_model.dict_alphabet, vsm_model.word_alphabet, isMeddra_dict)
+
+    data_loader = DataLoader(MyDataset(dict_Xs, dict_Ys), opt.batch_size, shuffle=True, collate_fn=my_collate)
+
+    expected_accuracy = int(d.config['norm_vsm_pretrain_accuracy'])
+
+    logging.info("start dict pretraining ...")
+
+    bad_counter = 0
+    best_accuracy = 0
+
+    for idx in range(9999):
+        epoch_start = time.time()
+
+        vsm_model.train()
+
+        correct, total = 0, 0
+
+        sum_loss = 0
+
+        train_iter = iter(data_loader)
+        num_iter = len(data_loader)
+
+        for i in range(num_iter):
+
+            x, lengths, y = next(train_iter)
+
+            l, y_pred = vsm_model.forward_train(x, lengths, y)
+
+            sum_loss += l.item()
+
+            l.backward()
+
+            if opt.gradient_clip > 0:
+                torch.nn.utils.clip_grad_norm_(vsm_model.parameters(), opt.gradient_clip)
+            optimizer.step()
+            vsm_model.zero_grad()
+
+            total += y.size(0)
+            _, pred = torch.max(y_pred, 1)
+            correct += (pred == y).sum().item()
+
+        epoch_finish = time.time()
+        accuracy = 100.0 * correct / total
+        logging.info("epoch: %s pretraining finished. Time: %.2fs. loss: %.4f Accuracy %.2f" % (
+            idx, epoch_finish - epoch_start, sum_loss / num_iter, accuracy))
+
+        if accuracy > expected_accuracy:
+
+            logging.info("Exceed {}% training accuracy, breaking ... ".format(expected_accuracy))
+            break
+
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            bad_counter = 0
+        else:
+            bad_counter += 1
+
+        if bad_counter >= opt.patience:
+            logging.info('Early Stop!')
+            break
+
+    return
 
 
 def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, opt, fold_idx, isMeddra_dict):
@@ -344,11 +501,10 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     norm_utils.fix_alphabet(dict_alphabet)
 
     logging.info("init_vector_for_dict")
-    poses = init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict)
+    poses, poses_lengths = init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict)
 
 
-    vsm_model = VsmNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses)
-
+    vsm_model = VsmNormer(word_alphabet, word_embedding, embedding_dim, dict_alphabet, poses, poses_lengths)
 
 
     logging.info("generate instances for training ...")
@@ -371,6 +527,11 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     if opt.tune_wordemb == False:
         freeze_net(vsm_model.word_embedding)
 
+
+    if d.config['norm_vsm_pretrain'] == '1':
+        dict_pretrain(dictionary, dictionary_reverse, d, True, optimizer, vsm_model)
+
+
     best_dev_f = -10
     best_dev_p = -10
     best_dev_r = -10
@@ -387,11 +548,17 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         train_iter = iter(train_loader)
         num_iter = len(train_loader)
 
+        sum_loss = 0
+
+        correct, total = 0, 0
+
         for i in range(num_iter):
 
             x, lengths, y = next(train_iter)
 
-            l = vsm_model.forward_train(x, lengths, y)
+            l, y_pred = vsm_model.forward_train(x, lengths, y)
+
+            sum_loss += l.item()
 
             l.backward()
 
@@ -400,8 +567,14 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
             optimizer.step()
             vsm_model.zero_grad()
 
+            total += y.size(0)
+            _, pred = torch.max(y_pred, 1)
+            correct += (pred == y).sum().item()
+
         epoch_finish = time.time()
-        logging.info("epoch: %s training finished. Time: %.2fs" % (idx, epoch_finish - epoch_start))
+        accuracy = 100.0 * correct / total
+        logging.info("epoch: %s training finished. Time: %.2fs. loss: %.4f Accuracy %.2f" % (
+        idx, epoch_finish - epoch_start, sum_loss / num_iter, accuracy))
 
         if opt.dev_file:
             p, r, f = norm_utils.evaluate(dev_data, dictionary, dictionary_reverse, vsm_model, None, None, d, isMeddra_dict)
