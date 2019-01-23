@@ -52,7 +52,7 @@ class NeuralNormer(nn.Module):
         self.word_embedding = word_embedding
         self.dict_alphabet = dict_alphabet
         self.gpu = opt.gpu
-
+        self.word_drop = nn.Dropout(opt.dropout)
         self.attn = DotAttentionLayer(self.embedding_dim)
         self.linear = nn.Linear(self.embedding_dim, norm_utils.get_dict_size(self.dict_alphabet), bias=False)
         self.criterion = nn.CrossEntropyLoss()
@@ -66,6 +66,7 @@ class NeuralNormer(nn.Module):
     def forward(self, x, lengths):
         # length = x.size(1)
         x = self.word_embedding(x)
+        x = self.word_drop(x)
 
         x = self.attn((x, lengths))
         # x = x.unsqueeze_(1)

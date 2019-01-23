@@ -29,7 +29,7 @@ class VsmNormer(nn.Module):
         self.dict_size = norm_utils.get_dict_size(dict_alphabet)
         self.margin = 1
         self.poses_lengths = poses_lengths
-
+        self.word_drop = nn.Dropout(opt.dropout)
         self.attn = DotAttentionLayer(self.embedding_dim)
         self.linear = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
         self.linear.weight.data.copy_(torch.eye(self.embedding_dim))
@@ -44,6 +44,7 @@ class VsmNormer(nn.Module):
 
         # length = mention.size(1)
         mention_word_emb = self.word_embedding(mention)
+        mention_word_emb = self.word_drop(mention_word_emb)
         # mention_word_emb = mention_word_emb.unsqueeze_(1)
         # mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
         # mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
@@ -51,6 +52,7 @@ class VsmNormer(nn.Module):
 
         # length = self.poses.size(1)
         pos_word_emb = self.word_embedding(self.poses)
+        pos_word_emb = self.word_drop(pos_word_emb)
         # pos_word_emb = pos_word_emb.unsqueeze_(1)
         # pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
         # pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)
@@ -94,6 +96,7 @@ class VsmNormer(nn.Module):
     def forward_eval(self, mention, lengths):
         # length = mention.size(1)
         mention_word_emb = self.word_embedding(mention)
+        mention_word_emb = self.word_drop(mention_word_emb)
         # mention_word_emb = mention_word_emb.unsqueeze_(1)
         # mention_word_pool = functional.avg_pool2d(mention_word_emb, (length, 1))
         # mention_word_pool = mention_word_pool.squeeze_(1).squeeze_(1)
@@ -101,6 +104,7 @@ class VsmNormer(nn.Module):
 
         # length = self.poses.size(1)
         pos_word_emb = self.word_embedding(self.poses)
+        pos_word_emb = self.word_drop(pos_word_emb)
         # pos_word_emb = pos_word_emb.unsqueeze_(1)
         # pos_word_pool = functional.avg_pool2d(pos_word_emb, (length, 1))
         # pos_word_pool = pos_word_pool.squeeze_(1).squeeze_(1)

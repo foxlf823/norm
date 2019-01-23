@@ -19,7 +19,7 @@ def normalize_word(word):
     return new_word
 
 def word_preprocess(word):
-    if opt.number_normalized:
+    if opt.norm_number_normalized:
         word = normalize_word(word)
     word = word.lower()
     return word

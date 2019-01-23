@@ -568,7 +568,7 @@ def read_instance_from_one_document(document, word_alphabet, char_alphabet, labe
 
         for token in sentence:
             word = token['text']
-            if opt.number_normalized:
+            if opt.ner_number_normalized:
                 word = normalize_word(word)
             words.append(word)
             word_Ids.append(word_alphabet.get_index(word))
@@ -831,7 +831,7 @@ class Data:
             for sentence in document.sentences:
                 for token in sentence:
                     word = token['text']
-                    if opt.number_normalized:
+                    if opt.ner_number_normalized:
                         word = normalize_word(word)
                     self.word_alphabet.add(word)
                     if token.get('label') is not None:
