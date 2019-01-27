@@ -14,6 +14,7 @@ import os
 from data_structure import Entity
 import torch.nn.functional as functional
 import math
+import numpy as np
 
 class DotAttentionLayer(nn.Module):
     def __init__(self, hidden_size):
@@ -190,7 +191,7 @@ def generate_instances_ehr(entities, word_alphabet, dict_alphabet, dictionary_re
                 else:
                     raise RuntimeError("entity {}, {}, cui not in dict_alphabet".format(entity.id, entity.name))
             else:
-                logging.info("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
+                logging.debug("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
                 continue
         else:
             Ys.append(0)
@@ -420,6 +421,7 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     train_X = []
     train_Y = []
     for doc in train_data:
+
         if isMeddra_dict:
             temp_X, temp_Y = generate_instances(doc.entities, word_alphabet, dict_alphabet)
         else:
@@ -427,8 +429,8 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         train_X.extend(temp_X)
         train_Y.extend(temp_Y)
 
-    train_loader = DataLoader(MyDataset(train_X, train_Y), opt.batch_size, shuffle=True, collate_fn=my_collate)
 
+    train_loader = DataLoader(MyDataset(train_X, train_Y), opt.batch_size, shuffle=True, collate_fn=my_collate)
 
     optimizer = optim.Adam(neural_model.parameters(), lr=opt.lr, weight_decay=opt.l2)
 
@@ -436,7 +438,7 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
         freeze_net(neural_model.word_embedding)
 
     if d.config['norm_neural_pretrain'] == '1':
-        dict_pretrain(dictionary, dictionary_reverse, d, True, optimizer, neural_model)
+        dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict, optimizer, neural_model)
 
 
     best_dev_f = -10
@@ -466,6 +468,10 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
             y_pred = neural_model.forward(x, lengths)
 
             l = neural_model.loss(y_pred, y)
+            # debug feili
+            # if np.any(np.isnan(l.item())):
+            #     logging.info("loss: {}".format(l.item()))
+            #     exit()
 
             sum_loss += l.item()
 

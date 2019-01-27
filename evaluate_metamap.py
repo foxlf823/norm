@@ -15,6 +15,9 @@ import torch
 
 type_we_care = set(['ADE','SSLIF', 'Indication'])
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 def parse_one_gold_file(annotation_dir, corpus_dir, fileName):
     document = Document()
     document.name = fileName[:fileName.find('.')]
@@ -29,7 +32,11 @@ def parse_one_gold_file(annotation_dir, corpus_dir, fileName):
 
         entity_ = Entity()
         entity_.id = entity.id
-        entity_.name = entity.text
+        processed_name = entity.text.replace('\\n', ' ')
+        if len(processed_name) == 0:
+            logging.debug("{}: entity {} name is empty".format(fileName, entity.id))
+            continue
+        entity_.name = processed_name
         entity_.type = entity.infons['type']
         entity_.spans.append([entity.locations[0].offset, entity.locations[0].end])
 
@@ -45,6 +52,7 @@ def parse_one_gold_file(annotation_dir, corpus_dir, fileName):
         else:
             logging.debug("{}: no norm id in entity {}".format(fileName, entity.id))
             # some entities may have no norm id
+            continue
 
         entities.append(entity_)
 

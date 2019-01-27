@@ -82,20 +82,15 @@ elif opt.whattodo == 2:
     UMLS_dict, UMLS_dict_reverse = umls.load_umls_MRCONSO(d.config['norm_dict'])
     logging.info("dict concept number {}".format(len(UMLS_dict)))
 
-    if opt.norm_neural:
-        if d.config['norm_neural_pretrain'] == '1':
-            neural_model = norm_neural.dict_pretrain(UMLS_dict, UMLS_dict_reverse, d, False)
-        else:
-            neural_model = None
 
     if opt.norm_rule and opt.norm_vsm and opt.norm_neural:  # ensemble
-        ensemble.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, neural_model, False)
+        ensemble.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, False)
     elif opt.norm_rule:
         p, r, f = multi_sieve.train(train_data, dev_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, False)
     elif opt.norm_vsm:
         vsm.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, False)
     elif opt.norm_neural:
-        norm_neural.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, neural_model, False)
+        norm_neural.train(train_data, dev_data, test_data, d, UMLS_dict, UMLS_dict_reverse, opt, None, False)
     else:
         raise RuntimeError("wrong configuration")
 

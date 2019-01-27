@@ -699,3 +699,10 @@ if __name__ == '__main__':
     # pubmed meddra
     # output_file = '/Users/feili/resource/data_to_train_emb/pubmed_meddra.txt'
     # pubmed_to_text('/Users/feili/resource/pubmed_meddra', output_file, False)
+
+    # pubmed snomed
+    # output_file = '/Users/feili/resource/data_to_train_emb/pubmed_snomed.txt'
+    # pubmed_to_text('/Users/feili/resource/pubmed_snomed', output_file, False)
+
+
+    pass

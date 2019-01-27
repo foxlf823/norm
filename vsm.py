@@ -227,7 +227,7 @@ def generate_instances_ehr(entities, word_alphabet, dict_alphabet, dictionary_re
                 else:
                     raise RuntimeError("entity {}, {}, cui not in dict_alphabet".format(entity.id, entity.name))
             else:
-                logging.info("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
+                logging.debug("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
                 continue
         else:
             Y = 0
@@ -533,7 +533,7 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
 
 
     if d.config['norm_vsm_pretrain'] == '1':
-        dict_pretrain(dictionary, dictionary_reverse, d, True, optimizer, vsm_model)
+        dict_pretrain(dictionary, dictionary_reverse, d, isMeddra_dict, optimizer, vsm_model)
 
 
     best_dev_f = -10

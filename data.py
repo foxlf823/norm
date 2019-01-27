@@ -339,7 +339,12 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, t
                 continue
             entity_ = Entity()
             entity_.id = entity.id
-            entity_.name = entity.text
+            processed_name = entity.text.replace('\\n', ' ')
+            if len(processed_name) == 0:
+                logging.debug("{}: entity {} name is empty".format(fileName, entity.id))
+                continue
+            entity_.name = processed_name
+
             entity_.type = entity.infons['type']
             entity_.spans.append([entity.locations[0].offset,entity.locations[0].end])
             if ('SNOMED code' in entity.infons and entity.infons['SNOMED code'] != 'N/A')\
@@ -355,6 +360,7 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, t
             else:
                 logging.debug("{}: no norm id in entity {}".format(fileName, entity.id))
                 ct_unnormed += 1
+                continue
 
             entities.append(entity_)
 

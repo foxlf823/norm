@@ -1809,8 +1809,7 @@ def runMultiPassSieve(document, entities, dictionary, isMeddra_dict):
     abbreviationObject.setTextAbbreviationExpansionMap(document.text)
 
     for entity in entities:
-        # debug feili
-        # print("{} {} {}".format(entity.name, entity.spans[0][0], entity.spans[0][1]))
+
         try:
             concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
             concept.setNameExpansion(document.text, abbreviationObject)
