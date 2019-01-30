@@ -99,7 +99,7 @@ class Section:
     def __init__(self):
         self.id = None
         self.name = None
-        self.text = None
+        self.text = ""
 
 class IgnoredRegion:
     def __init__(self):

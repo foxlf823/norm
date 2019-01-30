@@ -685,7 +685,7 @@ class Terminology:
 
 
 
-    def loadTAC2017Terminology(self, path):
+    def loadTAC2017Terminology(self, path, dictionary):
         for input_file_name in os.listdir(path):
             if input_file_name.find(".xml") == -1:
                 continue
@@ -699,17 +699,22 @@ class Terminology:
 
                 for normalization in reaction.normalizations:
 
-                    if normalization.meddra_pt_id is not None:
+                    if normalization.meddra_pt_id is None:
+                        continue
 
-                        # conceptName = normalization.meddra_pt.lower().strip()
+                    if normalization.meddra_pt_id not in dictionary:
+                        # logging.info(normalization.meddra_pt_id)
+                        continue
 
-                        self.loadMaps(conceptName, normalization.meddra_pt_id)
+                    # conceptName = normalization.meddra_pt.lower().strip()
 
-                        cui = normalization.meddra_pt_id
+                    self.loadMaps(conceptName, normalization.meddra_pt_id)
 
-                        simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
-                        for simpleConceptName in simpleConceptNames:
-                            self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
+                    cui = normalization.meddra_pt_id
+
+                    simpleConceptNames = SimpleNameSieve.getTerminologySimpleNames(re.split(r"\s+", conceptName))
+                    for simpleConceptName in simpleConceptNames:
+                        self.simpleNameToCuiListMap = Util.setMap(self.simpleNameToCuiListMap, simpleConceptName, cui)
 
     @classmethod
     def getOMIMCuis(self, cuis):
@@ -1025,8 +1030,8 @@ class Sieve:
         Sieve.trainingDataTerminology.loadTrainingDataTerminology_frompath(train_path, dictionary_reverse, isMeddra_dict)
 
     @classmethod
-    def setTAC2017Terminology(self, train_path):
-        Sieve.tac2017Terminology.loadTAC2017Terminology(train_path)
+    def setTAC2017Terminology(self, train_path, dictionary):
+        Sieve.tac2017Terminology.loadTAC2017Terminology(train_path, dictionary)
         Sieve.use_tac2017Terminology = True
 
     @classmethod
@@ -1791,7 +1796,7 @@ def init(opt, train_data, d, dictionary, dictionary_reverse, isMeddra_dict):
     if d.config.get('norm_ext_corpus') is not None:
         for k, v in d.config['norm_ext_corpus'].items():
             if k == 'tac':
-                Sieve.setTAC2017Terminology(v['path'])
+                Sieve.setTAC2017Terminology(v['path'], dictionary)
             else:
                 raise RuntimeError("wrong configuration")
 
@@ -1820,7 +1825,7 @@ def runMultiPassSieve(document, entities, dictionary, isMeddra_dict):
             if concept.getCui() == u"":
                 concept.setCui(u"CUI-less")
         except Exception as e:
-            print("error when process {} in {}".format(entity.name, document.name))
+            logging.info("error when process {} in {}".format(entity.name, document.name))
             concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
             concept.setCui(u"CUI-less")
             concepts.append(concept)

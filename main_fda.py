@@ -142,6 +142,7 @@ if opt.whattodo == 1:
         if opt.test_file:
             d.build_alphabet(d.test_data)
         d.fix_alphabet()
+        logging.info("alphabet size {}".format(d.word_alphabet.size()))
 
         logging.info("generate instance ...")
         d.train_texts, d.train_Ids = data.read_instance(d.train_data, d.word_alphabet, d.char_alphabet,

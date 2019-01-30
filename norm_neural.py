@@ -393,6 +393,7 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     if opt.test_file:
         norm_utils.build_alphabet(word_alphabet, test_data)
     norm_utils.fix_alphabet(word_alphabet)
+    logging.info("alphabet size {}".format(word_alphabet.size()))
 
 
     if d.config.get('norm_emb') is not None:

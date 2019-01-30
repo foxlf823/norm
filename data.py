@@ -409,6 +409,13 @@ def processOneFile_fda(fileName, annotation_dir, nlp_tool, isTraining, types, ty
     for section in annotation_file.sections:
         document = Document()
         document.name = fileName[:fileName.find('.')]+"_"+section.id
+        if section.text is None:
+            document.text = ""
+            document.entities = []
+            document.sentences = []
+            documents.append(document)
+            continue
+
         document.text = section.text
 
         entities = []

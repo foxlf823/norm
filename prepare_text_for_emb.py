@@ -704,5 +704,10 @@ if __name__ == '__main__':
     # output_file = '/Users/feili/resource/data_to_train_emb/pubmed_snomed.txt'
     # pubmed_to_text('/Users/feili/resource/pubmed_snomed', output_file, False)
 
+    # test set
+    output_file = '/Users/feili/resource/data_to_train_emb/fda2018_test.txt'
+    tac2017_to_text("/Users/feili/dataset/ADE Eval Shared Resources/UnannotatedTestCorpus", output_file, False)
+
+
 
     pass
