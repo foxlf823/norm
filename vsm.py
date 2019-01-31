@@ -247,24 +247,6 @@ def generate_instances_ehr(entities, word_alphabet, dict_alphabet, dictionary_re
     return Xs, Ys
 
 
-# def generate_instances_for_eval(entity, word_alphabet):
-#
-#     # mention
-#     tokens = my_tokenize(entity.name)
-#     mention = []
-#     for token in tokens:
-#         token = norm_utils.word_preprocess(token)
-#         word_id = word_alphabet.get_index(token)
-#         mention.append(word_id)
-#     max_len = len(mention)
-#     mentions = [mention]
-#     mentions = pad_sequence(mentions, max_len)
-#
-#     if torch.cuda.is_available():
-#         mentions = mentions.cuda(opt.gpu)
-#
-#     return mentions
-
 def init_vector_for_dict(word_alphabet, dict_alphabet, dictionary, isMeddra_dict):
 
     # pos

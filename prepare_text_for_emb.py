@@ -3,82 +3,45 @@ import os
 import nltk
 import re
 import spacy
-nlp_tool = spacy.load('en')
 
 import xml.sax
 import zipfile
+from data import get_sentences_and_tokens_from_spacy, get_sentences_and_tokens_from_nltk, get_sentences_and_tokens
+from options import opt
+from my_utils import normalize_word
 
 # all text follow word2vec and fasttext format
-# lower cased
-# number normalized to 0
 # utf-8
 
-pattern = re.compile(r'[-_/]+')
+if opt.nlp_tool == "spacy":
+    nlp_tool = spacy.load('en')
+elif opt.nlp_tool == "nltk":
+    nlp_tool = nltk.data.load('tokenizers/punkt/english.pickle')
+else:
+    nlp_tool = nltk.data.load('tokenizers/punkt/english.pickle')
 
-def my_split(s):
-    text = []
-    iter = re.finditer(pattern, s)
-    start = 0
-    for i in iter:
-        if start != i.start():
-            text.append(s[start: i.start()])
-        text.append(s[i.start(): i.end()])
-        start = i.end()
-    if start != len(s):
-        text.append(s[start: ])
-    return text
-
-
-def my_tokenize(txt):
-    # tokens1 = nltk.word_tokenize(txt.replace('"', " "))  # replace due to nltk transfer " to other character, see https://github.com/nltk/nltk/issues/1630
-    # tokens2 = []
-    # for token1 in tokens1:
-    #     token2 = my_split(token1)
-    #     tokens2.extend(token2)
-    # return tokens2
-
-
-    document = nlp_tool(txt)
-    sentences = []
-    for span in document.sents:
-        sentence = [document[i] for i in range(span.start, span.end)]
-
-        tokens = []
-        for t in sentence:
-            token1 = t.text.strip()
-            if token1 == '':
-                continue
-            token2 = my_split(token1)
-            tokens.extend(token2)
-
-        sentences.append(tokens)
-
-    return sentences
-
-
-def normalize_word_digit(word):
-    new_word = ""
-    for char in word:
-        if char.isdigit():
-            new_word += '0'
-        else:
-            new_word += char
-    return new_word
 
 def nlp_process(data):
-    sentences = my_tokenize(data)
+    if opt.nlp_tool == "spacy":
+        sentences = get_sentences_and_tokens_from_spacy(data, nlp_tool, None)
+    elif opt.nlp_tool == "nltk":
+        sentences = get_sentences_and_tokens_from_nltk(data, nlp_tool, None, None, None)
+    else:
+        sentences = get_sentences_and_tokens(data, nlp_tool, None, None, None)
 
     sentences_normed = []
     for sent in sentences:
 
         tokens_normed = []
         for token in sent:
-            token = token.lower()
-            token = normalize_word_digit(token)
+            token = token['text'].lower()
+            # token = normalize_word(token)
             tokens_normed.append(token)
         sentences_normed.append(tokens_normed)
 
     return sentences_normed
+
+
 
 
 def ehr_to_text(dir_path, output_file_path, append):
@@ -637,6 +600,7 @@ if __name__ == '__main__':
 
 
 
+
     # ehr: made, cardio, hypoglecimia
     # output_file = '/Users/feili/resource/data_to_train_emb/ehr.txt'
     # ehr_to_text('/Users/feili/Desktop/umass/MADE/MADE-1.0/corpus', output_file, False)
@@ -671,7 +635,7 @@ if __name__ == '__main__':
 
     # pubmed
     # output_file = '/Users/feili/resource/data_to_train_emb/pubmed.txt'
-    # pubmed_to_text('/Users/feili/resource/data_to_train_emb/pubmed_ade', output_file, False)
+    # pubmed_to_text('/Users/feili/resource/pubmed_ade', output_file, False)
 
     # drugbank
     # output_file = '/Users/feili/resource/data_to_train_emb/drugbank.txt'
@@ -685,7 +649,6 @@ if __name__ == '__main__':
     # output_file = '/Users/feili/resource/data_to_train_emb/dailymed.txt'
     # dailymed_to_text("/Users/feili/resource/dm_spl_monthly_update_oct2018/prescription", output_file, False)
     # dailymed_to_text("/Users/feili/resource/dm_spl_monthly_update_oct2018/otc", output_file, True)
-    # dailymed_parse_one_xml('/Users/feili/Downloads/AFINITOR11232018/beceb18a-7957-4a80-bcc1-b4a0b05ef106.xml', output_file, parser)
 
     # tac 2017
     # output_file = '/Users/feili/resource/data_to_train_emb/tac2017.txt'
@@ -705,8 +668,8 @@ if __name__ == '__main__':
     # pubmed_to_text('/Users/feili/resource/pubmed_snomed', output_file, False)
 
     # test set
-    output_file = '/Users/feili/resource/data_to_train_emb/fda2018_test.txt'
-    tac2017_to_text("/Users/feili/dataset/ADE Eval Shared Resources/UnannotatedTestCorpus", output_file, False)
+    # output_file = '/Users/feili/resource/data_to_train_emb/fda2018_test.txt'
+    # tac2017_to_text("/Users/feili/dataset/ADE Eval Shared Resources/UnannotatedTestCorpus", output_file, False)
 
 
 

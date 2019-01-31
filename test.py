@@ -92,7 +92,8 @@ def test(data, opt):
     elif opt.nlp_tool == "stanford":
         nlp_tool = StanfordCoreNLP('http://localhost:{0}'.format(9000))
     else:
-        raise RuntimeError("invalid nlp tool")
+        logging.info("use my tokenizer")
+        nlp_tool = None
 
     corpus_files = [f for f in listdir(corpus_dir) if isfile(join(corpus_dir, f))]
 

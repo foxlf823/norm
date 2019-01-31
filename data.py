@@ -15,6 +15,41 @@ from my_corenlp_wrapper import StanfordCoreNLP
 import json
 import xml.sax
 import fda_xml_handler
+from fox_tokenizer import FoxTokenizer
+
+def get_sentences_and_tokens(text, nlp_tool, entities, ignore_regions, section_id):
+    all_sents_inds = []
+    generator = nlp_tool.span_tokenize(text)
+    for t in generator:
+        all_sents_inds.append(t)
+
+    sentences = []
+    for ind in range(len(all_sents_inds)):
+        t_start = all_sents_inds[ind][0]
+        t_end = all_sents_inds[ind][1]
+
+        tmp_tokens = FoxTokenizer.tokenize(t_start, text[t_start:t_end], False)
+        sentence_tokens = []
+        for token_idx, token in enumerate(tmp_tokens):
+            token_dict = {}
+            token_dict['start'], token_dict['end'] = token[1], token[2]
+            token_dict['text'] = token[0]
+            token_dict['pos'] = ""
+            token_dict['cap'] = ""
+
+            # get label
+            if entities is not None:
+                if opt.schema == 'BMES':
+                    token_dict['label'] = getLabel(token_dict['start'], token_dict['end'], entities)
+                elif opt.schema == 'BIOHD_1234':
+                    token_dict['label'] = getLabel_BIOHD1234(tmp_tokens, token_idx, entities, ignore_regions, section_id)
+                else:
+                    raise RuntimeError("invalid label schema")
+
+            sentence_tokens.append(token_dict)
+
+        sentences.append(sentence_tokens)
+    return sentences
 
 def getLabel(start, end, entities):
     match = ""
@@ -199,23 +234,16 @@ def my_split(s):
     return text
 
 def my_tokenize(txt):
-    tokens1 = nltk.word_tokenize(txt.replace('"', " "))  # replace due to nltk transfer " to other character, see https://github.com/nltk/nltk/issues/1630
-    tokens2 = []
-    for token1 in tokens1:
-        token2 = my_split(token1)
-        tokens2.extend(token2)
-    return tokens2
+    if opt.nlp_tool == "nltk":
+        tokens1 = nltk.word_tokenize(txt.replace('"', " "))  # replace due to nltk transfer " to other character, see https://github.com/nltk/nltk/issues/1630
+        tokens2 = []
+        for token1 in tokens1:
+            token2 = my_split(token1)
+            tokens2.extend(token2)
+        return tokens2
+    else:
+        return FoxTokenizer.tokenize(0, txt, True)
 
-# if add pos, add to the end, so external functions don't need to be modified too much
-# def text_tokenize_and_postagging(txt, sent_start):
-#     tokens= my_tokenize(txt)
-#     pos_tags = nltk.pos_tag(tokens)
-#
-#     offset = 0
-#     for token, pos_tag in pos_tags:
-#         offset = txt.find(token, offset)
-#         yield token, pos_tag, offset+sent_start, offset+len(token)+sent_start
-#         offset += len(token)
 
 def text_tokenize_and_postagging(txt, sent_start):
     tokens= my_tokenize(txt)
@@ -385,7 +413,10 @@ def processOneFile(fileName, annotation_dir, corpus_dir, nlp_tool, isTraining, t
         else:
             sentences = get_sentences_and_tokens_from_stanford(corpus_file, nlp_tool, None)
     else:
-        raise RuntimeError("invalid nlp tool")
+        if isTraining:
+            sentences = get_sentences_and_tokens(corpus_file, nlp_tool, document.entities, None, None)
+        else:
+            sentences = get_sentences_and_tokens(corpus_file, nlp_tool, None, None, None)
 
 
     document.sentences = sentences
@@ -483,7 +514,9 @@ def loadData(basedir, isTraining, types, type_filter):
     elif opt.nlp_tool == "stanford":
         nlp_tool = StanfordCoreNLP('http://localhost:{0}'.format(9000))
     else:
-        raise RuntimeError("invalid nlp tool")
+        logging.info("use my tokenizer")
+        # we still need nltk to split sentences
+        nlp_tool = nltk.data.load('tokenizers/punkt/english.pickle')
 
     documents = []
 
@@ -720,17 +753,21 @@ def load_pretrain_emb(embedding_path):
         with codecs.open(embedding_path, 'r', 'UTF-8') as file:
         # with open(embedding_path, 'r') as file:
             for line in file:
+                # logging.info(line)
                 line = line.strip()
                 if len(line) == 0:
                     continue
-                tokens = line.split()
+                # tokens = line.split()
+                tokens = re.split(r"\s+", line)
                 # feili
                 if len(tokens) == 2:
                     continue # it's a head
                 if embedd_dim < 0:
                     embedd_dim = len(tokens) - 1
                 else:
-                    assert (embedd_dim + 1 == len(tokens))
+                    # assert (embedd_dim + 1 == len(tokens))
+                    if embedd_dim + 1 != len(tokens):
+                        continue
                 embedd = np.zeros([1, embedd_dim])
                 embedd[:] = tokens[1:]
                 embedd_dict[tokens[0]] = embedd
