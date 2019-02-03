@@ -15,6 +15,8 @@ from data_structure import Entity
 import torch.nn.functional as functional
 import math
 import numpy as np
+from stopword import stop_word
+from data import loadData
 
 class DotAttentionLayer(nn.Module):
     def __init__(self, hidden_size):
@@ -159,21 +161,27 @@ def generate_instances(entities, word_alphabet, dict_alphabet):
         if len(entity.norm_ids) > 0:
             Y = norm_utils.get_dict_index(dict_alphabet, entity.norm_ids[0])  # use the first id to generate instance
             if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):  # for tac, can be none or oov ID
-                Ys.append(Y)
+                pass
             else:
                 continue
         else:
-            Ys.append(0)
+            Y = 0
 
 
         tokens = my_tokenize(entity.name)
         word_ids = []
         for token in tokens:
+            if token in stop_word:
+                continue
             token = norm_utils.word_preprocess(token)
             word_id = word_alphabet.get_index(token)
             word_ids.append(word_id)
 
+        if len(word_ids) == 0:
+            continue
+
         Xs.append(word_ids)
+        Ys.append(Y)
 
     return Xs, Ys
 
@@ -187,24 +195,30 @@ def generate_instances_ehr(entities, word_alphabet, dict_alphabet, dictionary_re
                 cui_list = dictionary_reverse[entity.norm_ids[0]]
                 Y = norm_utils.get_dict_index(dict_alphabet, cui_list[0])  # use the first id to generate instance
                 if Y >= 0 and Y < norm_utils.get_dict_size(dict_alphabet):
-                    Ys.append(Y)
+                    pass
                 else:
                     raise RuntimeError("entity {}, {}, cui not in dict_alphabet".format(entity.id, entity.name))
             else:
                 logging.debug("entity {}, {}, can't map to umls, ignored".format(entity.id, entity.name))
                 continue
         else:
-            Ys.append(0)
+            Y = 0
 
 
         tokens = my_tokenize(entity.name)
         word_ids = []
         for token in tokens:
+            if token in stop_word:
+                continue
             token = norm_utils.word_preprocess(token)
             word_id = word_alphabet.get_index(token)
             word_ids.append(word_id)
 
+        if len(word_ids) == 0:
+            continue
+
         Xs.append(word_ids)
+        Ys.append(Y)
 
     return Xs, Ys
 
@@ -261,6 +275,8 @@ def generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_d
             tokens = my_tokenize(concept_name)
             word_ids = []
             for token in tokens:
+                if token in stop_word:
+                    continue
                 token = norm_utils.word_preprocess(token)
                 word_id = word_alphabet.get_index(token)
                 word_ids.append(word_id)
@@ -290,6 +306,8 @@ def generate_dict_instances(dictionary, dict_alphabet, word_alphabet, isMeddra_d
             tokens = my_tokenize(concept.names[0])
             word_ids = []
             for token in tokens:
+                if token in stop_word:
+                    continue
                 token = norm_utils.word_preprocess(token)
                 word_id = word_alphabet.get_index(token)
                 word_ids.append(word_id)
@@ -526,4 +544,95 @@ def train(train_data, dev_data, test_data, d, dictionary, dictionary_reverse, op
     return best_dev_p, best_dev_r, best_dev_f
 
 
+def error_analysis(d, dictionary, dictionary_reverse, opt, isMeddra_dict):
+    logging.info("error_analysis ...")
 
+    test_data = loadData(opt.test_file, False, opt.types, opt.type_filter)
+
+    logging.info("use my tokenizer")
+    nlp_tool = None
+
+    logging.info("use neural-based normer")
+    if opt.test_in_cpu:
+        neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'), map_location='cpu')
+    else:
+        neural_model = torch.load(os.path.join(opt.output, 'norm_neural.pkl'))
+    neural_model.eval()
+
+    ct_predicted = 0
+    ct_gold = 0
+    ct_correct = 0
+
+    for document in test_data:
+
+        logging.info("###### begin {}".format(document.name))
+
+        # copy entities from gold entities
+        pred_entities = []
+        for gold in document.entities:
+            pred = Entity()
+            pred.id = gold.id
+            pred.type = gold.type
+            pred.spans = gold.spans
+            pred.name = gold.name
+            pred_entities.append(pred)
+
+        neural_model.process_one_doc(document, pred_entities, dictionary, dictionary_reverse, isMeddra_dict)
+
+        ct_norm_gold = len(document.entities)
+        ct_norm_predict = len(pred_entities)
+        ct_norm_correct = 0
+
+        for predict_entity in pred_entities:
+
+
+
+            for gold_entity in document.entities:
+
+                if predict_entity.equals_span(gold_entity):
+
+                    b_right = False
+
+                    if len(gold_entity.norm_ids) == 0:
+                        # if gold_entity not annotated, we count it as TP
+                        b_right = True
+                        ct_norm_correct += 1
+                    else:
+
+                        if len(predict_entity.norm_ids) != 0 and predict_entity.norm_ids[0] in dictionary:
+                            concept = dictionary[predict_entity.norm_ids[0]]
+
+                            if gold_entity.norm_ids[0] in concept.codes:
+                                ct_norm_correct += 1
+                                b_right = True
+
+                    if b_right == False:
+                        if len(predict_entity.norm_ids) != 0 and predict_entity.norm_ids[0] in dictionary:
+                            concept = dictionary[predict_entity.norm_ids[0]]
+                            logging.info("entity name: {} | gold id, name: {}, {} | pred cui, codes, names: {}, {}, {}"
+                                         .format(predict_entity.name, gold_entity.norm_ids[0], gold_entity.norm_names[0],
+                                                 concept.cui, concept.codes, concept.names))
+
+                    break
+
+
+
+
+        ct_predicted += ct_norm_predict
+        ct_gold += ct_norm_gold
+        ct_correct += ct_norm_correct
+
+
+    if ct_gold == 0:
+        precision = 0
+        recall = 0
+    else:
+        precision = ct_correct * 1.0 / ct_predicted
+        recall = ct_correct * 1.0 / ct_gold
+
+    if precision+recall == 0:
+        f_measure = 0
+    else:
+        f_measure = 2*precision*recall/(precision+recall)
+
+    logging.info("Dev: p: %.4f, r: %.4f, f: %.4f" % (precision, recall, f_measure))

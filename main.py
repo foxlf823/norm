@@ -94,7 +94,7 @@ elif opt.whattodo == 2:
     else:
         raise RuntimeError("wrong configuration")
 
-else:
+elif opt.whattodo == 3:
     d.load(os.path.join(opt.output, "data.pkl"))
 
     d_new = data.Data(opt)
@@ -102,5 +102,18 @@ else:
     logging.info(d.config)
 
     test.test(d, opt)
+
+elif opt.whattodo == 4:
+
+    logging.info(d.config)
+
+    logging.info("load dict ...")
+    UMLS_dict, UMLS_dict_reverse = umls.load_umls_MRCONSO(d.config['norm_dict'])
+    logging.info("dict concept number {}".format(len(UMLS_dict)))
+
+    norm_neural.error_analysis(d, UMLS_dict, UMLS_dict_reverse, opt, False)
+
+else:
+    logging.error("wrong whattodo")
 
 

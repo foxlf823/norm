@@ -7,6 +7,7 @@ import multi_sieve
 import copy
 import logging
 import ensemble
+from stopword import stop_word
 
 
 def normalize_word(word):
@@ -30,6 +31,8 @@ def build_alphabet(alphabet, data):
         for sentence in document.sentences:
             for token in sentence:
                 word = token['text']
+                if word in stop_word:
+                    continue
                 alphabet.add(word_preprocess(word))
 
 def open_alphabet(alphabet):
@@ -43,12 +46,16 @@ def build_alphabet_from_dict(alphabet, dictionary, isMeddra_dict):
         for concept_id, concept_name in dictionary.items():
             tokens = my_tokenize(concept_name)
             for word in tokens:
+                if word in stop_word:
+                    continue
                 alphabet.add(word_preprocess(word))
     else:
         for concept_id, concept in dictionary.items():
             for concept_name in concept.names:
                 tokens = my_tokenize(concept_name)
                 for word in tokens:
+                    if word in stop_word:
+                        continue
                     alphabet.add(word_preprocess(word))
 
 def get_dict_index(dict_alphabet, concept_id):

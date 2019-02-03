@@ -547,7 +547,7 @@ def loadData(basedir, isTraining, types, type_filter):
 
     logging.info("document number: {}".format(count_document))
     logging.info("sentence number: {}".format(count_sentence))
-    logging.info("entity number {}, snomed {}, meddra {}, unnormed {}".format(count_entity, count_entity_snomed,
+    logging.info("entity number (snomed+meddra) {}, snomed {}, meddra {}, unnormed {}".format(count_entity, count_entity_snomed,
                                                                               count_entity_meddra, count_entity_without_normed))
 
     return documents
@@ -784,6 +784,7 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
     if embedding_path != None:
         embedd_dict, embedd_dim = load_pretrain_emb(embedding_path)
     alphabet_size = word_alphabet.size()
+    logging.info("alphabet size {}".format(alphabet_size))
     scale = np.sqrt(3.0 / embedd_dim)
     pretrain_emb = np.zeros([word_alphabet.size(), embedd_dim])
     perfect_match = 0
@@ -820,10 +821,12 @@ def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim, norm):
             pretrain_emb[index,:] = np.random.uniform(-scale, scale, [1, embedd_dim])
             not_match += 1
     pretrained_size = len(embedd_dict)
-    logging.info("Embedding:\n     pretrain word:%s, prefect match:%s, case_match:%s, dig_zero_match:%s, "
-                 "case_dig_zero_match:%s, oov:%s, oov%%:%s"
-                 %(pretrained_size, perfect_match, case_match, digits_replaced_with_zeros_found,
-                   lowercase_and_digits_replaced_with_zeros_found, not_match, (not_match+0.)/alphabet_size))
+    logging.info("pretrained word emb size {}".format(pretrained_size))
+    logging.info("prefect match:%s, case_match:%s, dig_zero_match:%s, "
+                 "case_dig_zero_match:%s, not_match:%s"
+                 %(perfect_match, case_match, digits_replaced_with_zeros_found,
+                   lowercase_and_digits_replaced_with_zeros_found, not_match))
+    logging.info('oov: %.2f%%' % (not_match*100.0/alphabet_size))
     return pretrain_emb, embedd_dim
 
 

@@ -1,0 +1,4 @@
+dental|oral cavity
+difficulty|problem
+heat|warm
+intolerance|not tolerate
