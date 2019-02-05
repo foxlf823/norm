@@ -16,6 +16,9 @@ import re
 from data_structure import Entity
 from nltk.stem import WordNetLemmatizer
 wnl = WordNetLemmatizer()
+from nltk.stem import LancasterStemmer
+lancaster = LancasterStemmer()
+MIN_WORD_LEN = 2
 
 def getAbbr_fromFile(file_path):
     s = dict()
@@ -60,52 +63,61 @@ def getBackground_fromFile(file_path):
 
 background = getBackground_fromFile('background.txt')
 
-def add_token(s, token):
-    if token not in stop_word:
-        token = token.lower()
 
-        # replace token with its lemma
-        token = wnl.lemmatize(token)
-
-        s.add(token)
 
 def preprocess(str, useBackground):
 
     tokens = FoxTokenizer.tokenize(0, str, True)
+
     tokens1 = set()
     for token in tokens:
-        if len(token) < 2:
+        # word len
+        if len(token) < MIN_WORD_LEN:
             continue
 
-        # for abbr token, replace it with its full name
+        # replace abbr, cased, one abbr -> many full names
         if token in abbr:
             full_names = abbr[token]
             for full_name in full_names:
                 t1s = FoxTokenizer.tokenize(0, full_name, True)
                 for t1 in t1s:
-                    add_token(tokens1, t1)
+                    tokens1.add(t1.lower())
+        else:
+            tokens1.add(token)
 
+    tokens2 = set()
+    for token in tokens1:
+        # lower
+        token = token.lower()
+
+        # stop word
+        if token in stop_word:
             continue
 
-        add_token(tokens1, token)
+        # lemma
+        token = wnl.lemmatize(token)
 
+        tokens2.add(token)
 
-    # add token's background word
-    if useBackground:
-        tokens2 = set()
-        for token1 in tokens1:
-            if token1 in background:
-                names = background[token1]
-                for name in names:
-                    t2s = FoxTokenizer.tokenize(0, name, True)
-                    for t2 in t2s:
-                        add_token(tokens2, t2)
-        tokens1 = tokens1 | tokens2
+        # add background
+        if useBackground and token in background:
+            names = background[token]
+            for name in names:
+                t2s = FoxTokenizer.tokenize(0, name, True)
+                for t2 in t2s:
+                    tokens2.add(t2.lower())
 
-    # add tokens' context word
+    tokens3 = set()
+    for token in tokens2:
+        token = lancaster.stem(token)
 
+        # word len
+        if len(token) < MIN_WORD_LEN:
+            continue
 
-    return tokens1
+        tokens3.add(token)
+
+    return tokens3
 
 def dict_refine(str):
     return re.sub(r'\bNOS\b|\bfinding\b|\(.+?\)|\[.+?\]|\bunspecified\b', ' ', str, flags=re.I).strip()
@@ -239,7 +251,7 @@ if __name__ == '__main__':
         ct_correct = 0
 
         for document in documents:
-            logging.debug("###### begin {}".format(document.name))
+            logging.info("###### begin {}".format(document.name))
 
             pred_entities = []
             for gold in document.entities:
@@ -296,7 +308,7 @@ if __name__ == '__main__':
             ct_gold += ct_norm_gold
             ct_correct += ct_norm_correct
 
-            logging.debug("###### end {}, gold {}, predict {}, correct {}".format(document.name, ct_norm_gold, ct_norm_predict, ct_norm_correct))
+            logging.info("###### end {}, gold {}, predict {}, correct {}".format(document.name, ct_norm_gold, ct_norm_predict, ct_norm_correct))
 
         if ct_gold == 0:
             precision = 0
