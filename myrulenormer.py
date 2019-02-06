@@ -19,6 +19,7 @@ wnl = WordNetLemmatizer()
 from nltk.stem import LancasterStemmer
 lancaster = LancasterStemmer()
 MIN_WORD_LEN = 2
+from sortedcontainers import SortedSet
 
 def getAbbr_fromFile(file_path):
     s = dict()
@@ -65,7 +66,7 @@ background = getBackground_fromFile('background.txt')
 
 
 
-def preprocess(str, useBackground):
+def preprocess(str, useBackground, useSortedSet):
 
     tokens = FoxTokenizer.tokenize(0, str, True)
 
@@ -107,7 +108,10 @@ def preprocess(str, useBackground):
                 for t2 in t2s:
                     tokens2.add(t2.lower())
 
-    tokens3 = set()
+    if useSortedSet:
+        tokens3 = SortedSet()
+    else:
+        tokens3 = set()
     for token in tokens2:
         token = lancaster.stem(token)
 
@@ -131,6 +135,7 @@ def make_dictionary(d) :
 
     for cui, concept in UMLS_dict.items():
         new_names = set()
+        # new_names = SortedSet()
         write_str = cui+'|'
         for i, id in enumerate(concept.codes):
             if i == len(concept.codes)-1:
@@ -144,7 +149,7 @@ def make_dictionary(d) :
             name = dict_refine(name)
 
             # given a name, output its token set
-            new_name = preprocess(name, True)
+            new_name = preprocess(name, True, False)
             # all synonym merged
             new_names = new_names | new_name
 
@@ -161,6 +166,20 @@ def make_dictionary(d) :
 
     fp.close()
 
+    fp = codecs.open("dictionary_reverse.txt", 'w', 'UTF-8')
+
+    for code, cui_list in UMLS_dict_reverse.items():
+        write_str = code + '|'
+        for i, cui in enumerate(cui_list):
+            if i == len(cui_list)-1:
+                write_str += cui
+            else:
+                write_str += cui + ','
+
+        fp.write(write_str + "\n")
+
+    fp.close()
+
 def load_dictionary(d):
     UMLS_dict = {}
     fp = codecs.open("dictionary.txt", 'r', 'UTF-8')
@@ -172,6 +191,7 @@ def load_dictionary(d):
         concept.cui = columns[0]
         concept.codes = list(columns[1].split(','))
         concept.names = set(columns[2].split(','))
+        # concept.names = SortedSet(columns[2].split(','))
 
         UMLS_dict[columns[0]] = concept
 
@@ -179,6 +199,21 @@ def load_dictionary(d):
     fp.close()
 
     return UMLS_dict
+
+def load_dictionary_reverse():
+    dictionary_reverse = {}
+
+    fp = codecs.open("dictionary_reverse.txt", 'r', 'UTF-8')
+
+    for line in fp:
+        line = line.strip()
+        columns = line.split('|')
+        dictionary_reverse[columns[0]] = list(columns[1].split(','))
+
+    fp.close()
+
+    return dictionary_reverse
+
 
 
 def compare(gold_entity_tokens, dictionary):
@@ -199,7 +234,7 @@ def compare(gold_entity_tokens, dictionary):
 
     return max_cui
 
-def process_one_doc(document, entities, dictionary):
+def process_one_doc(document, entities, dictionary, train_annotations_dict):
 
     for entity in entities:
 
@@ -207,14 +242,26 @@ def process_one_doc(document, entities, dictionary):
         #     logging.info(1)
         #     pass
 
-        entity_tokens = preprocess(entity.name, True)
 
 
+        if train_annotations_dict is not None:
+            entity_tokens = preprocess(entity.name, True, True)
+            entity_key = ""
+            for token in entity_tokens:
+                entity_key += token + "_"
 
+            if entity_key in train_annotations_dict:
+                cui_list = train_annotations_dict[entity_key]
+                for cui in cui_list:
+                    entity.norm_ids.append(cui)
+
+                continue
+
+        entity_tokens = preprocess(entity.name, True, False)
         max_cui = compare(entity_tokens, dictionary)
 
         for cui in max_cui:
-            concept = dictionary[cui]
+            # concept = dictionary[cui]
             entity.norm_ids.append(cui)
             # entity.norm_names.append(concept.names)
 
@@ -231,6 +278,30 @@ def determine_norm_result(gold_entity, predict_entity):
 
     return False
 
+# if we have train set, use the annotations directly
+# its priority is higher than rules
+def load_train_set(dictionary_reverse):
+
+    documents = loadData(opt.train_file, False, opt.types, opt.type_filter)
+
+    train_annotations_dict = {}
+
+    for document in documents:
+        for gold_entity in document.entities:
+
+            entity_tokens = preprocess(gold_entity.name, True, True)
+            entity_key = ""
+            for token in entity_tokens:
+                entity_key += token+"_"
+
+            if gold_entity.norm_ids[0] in dictionary_reverse:
+                cui_list = dictionary_reverse[gold_entity.norm_ids[0]]
+
+                for cui in cui_list:
+                    setMap(train_annotations_dict, entity_key, cui)
+
+    return train_annotations_dict
+
 
 if __name__ == '__main__':
 
@@ -242,9 +313,18 @@ if __name__ == '__main__':
         make_dictionary(d)
 
     else:
-        dictionary = load_dictionary(d)
+
 
         documents = loadData(opt.test_file, False, opt.types, opt.type_filter)
+
+        if opt.train_file:
+            logging.info("use train data")
+            dictionary_reverse = load_dictionary_reverse()
+            train_annotations_dict = load_train_set(dictionary_reverse)
+        else:
+            train_annotations_dict = None
+
+        dictionary = load_dictionary(d)
 
         ct_predicted = 0
         ct_gold = 0
@@ -262,7 +342,7 @@ if __name__ == '__main__':
                 pred.name = gold.name
                 pred_entities.append(pred)
 
-            process_one_doc(document, pred_entities, dictionary)
+            process_one_doc(document, pred_entities, dictionary, train_annotations_dict)
 
             ct_norm_gold = len(document.entities)
             ct_norm_predict = len(pred_entities)
