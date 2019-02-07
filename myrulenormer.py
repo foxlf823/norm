@@ -303,6 +303,8 @@ def load_train_set(dictionary_reverse):
     return train_annotations_dict
 
 
+
+
 if __name__ == '__main__':
 
     logging.info(opt)
@@ -330,6 +332,12 @@ if __name__ == '__main__':
         ct_gold = 0
         ct_correct = 0
 
+        # stat
+        ct_answer_zero = 0
+        ct_answer_one = 0
+        ct_answer_multi_gold_in = 0
+        ct_answer_multi_gold_not_in = 0
+
         for document in documents:
             logging.info("###### begin {}".format(document.name))
 
@@ -348,6 +356,7 @@ if __name__ == '__main__':
             ct_norm_predict = len(pred_entities)
             ct_norm_correct = 0
 
+
             for predict_entity in pred_entities:
 
                 for gold_entity in document.entities:
@@ -360,6 +369,28 @@ if __name__ == '__main__':
                         if determine_norm_result(gold_entity, predict_entity):
                             ct_norm_correct += 1
                             b_right = True
+
+                        # stat
+                        if len(predict_entity.norm_ids) == 0:
+                            ct_answer_zero += 1
+                        elif len(predict_entity.norm_ids) == 1:
+                            ct_answer_one += 1
+                        else:
+                            find1 = False
+                            for norm_id in predict_entity.norm_ids:
+                                if norm_id in dictionary:
+                                    concept = dictionary[norm_id]
+
+                                    if gold_entity.norm_ids[0] in concept.codes:
+                                        find1 = True
+                                        break
+                            if find1:
+                                ct_answer_multi_gold_in += 1
+                            else:
+                                ct_answer_multi_gold_not_in += 1
+
+
+
 
                         if b_right == False:
 
@@ -403,6 +434,10 @@ if __name__ == '__main__':
             f_measure = 2 * precision * recall / (precision + recall)
 
         logging.info("p: %.4f, r: %.4f, f: %.4f" % (precision, recall, f_measure))
+
+        # stat
+        logging.info("ct_answer_zero {}, ct_answer_one {}, ct_answer_multi_gold_in {}, ct_answer_multi_gold_not_in {}"
+                     .format(ct_answer_zero, ct_answer_one, ct_answer_multi_gold_in, ct_answer_multi_gold_not_in))
 
 
 
