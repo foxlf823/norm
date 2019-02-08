@@ -1853,6 +1853,32 @@ def runMultiPassSieve(document, entities, dictionary, isMeddra_dict):
                 if entity.rule_id is None:
                     entity.rule_id = _id
 
+def runMultiPassSieve_oneentity(document, entity):
+
+    abbreviationObject = Abbreviation()
+    abbreviationObject.setTextAbbreviationExpansionMap(document.text)
+
+    try:
+        concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
+        concept.setNameExpansion(document.text, abbreviationObject)
+        concept.setStemmedName()
+
+        MultiPassSieveNormalizer.applyMultiPassSieve(concept)
+        if concept.getCui() == u"":
+            concept.setCui(u"CUI-less")
+    except Exception as e:
+        logging.info("error when process {} in {}".format(entity.name, document.name))
+        concept = Concept(str(entity.spans[0][0]) + "|" + str(entity.spans[0][1]), entity.name, None, None)
+        concept.setCui(u"CUI-less")
+
+
+
+    id = concept.getCui()
+    if id != u"CUI-less":
+        for _id in id.split("|"):
+            entity.norm_ids.append(_id)
+
+
 
 
 def finalize(shutdownjvm):
